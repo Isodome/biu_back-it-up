@@ -16,14 +16,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
-import os
-import argparse
 import re
-
-from datetime import datetime, timedelta
-from collections import namedtuple
-
+from datetime import datetime
 
 class Backup:
     def __init__(self, path, creation_time):
@@ -36,20 +30,25 @@ class Backup:
 
 
 def parse_datetime(datetime_str):
-    pattern = r'(\d{4})[-_]?(\d{2})[-_]?(\d{2})([-_Tt](\d{2})[_-](\d{2}))?'
+    pattern = r'(\d{4})[-_]?(\d{1,2})[-_]?(\d{1,2})([-_Tt](\d{2})[_-]?(\d{2})([_-]?(\d{2}))?)?'
     match = re.fullmatch(pattern, datetime_str)
     if match:
         groups = match.groups()
         year = int(groups[0])
         month = int(groups[1])
         day = int(groups[2])
-        hour = int(groups[4]) if groups[3] is not None else 0
-        minute = int(groups[5]) if groups[4] is not None else 0
-        second = 0
-        backup_time = datetime(year, month, day, hour, minute, second)
-        return backup_time
+        hour = int(groups[4]) if groups[4] is not None else 0
+        minute = int(groups[5]) if groups[5] is not None else 0
+        second = int(groups[7]) if groups[7] is not None else 0
+        try:
+            return datetime(year, month, day, hour, minute, second)
+        except ValueError:
+            pass
     else:
-        raise ValueError("Invalid datetime format")
+        try:
+            return datetime.fromisoformat(datetime_str)
+        except ValueError:
+            return None
 
 def list_backups(path):
     dirs = [e for e in os.scandir(path = path) if e.is_dir() and len(e.name)>=8 and e.name[0] != '.']
@@ -68,33 +67,3 @@ def list_backups(path):
         return b.creation_time
     backups.sort(key=by_creation_time)
     return backups
-
-
-def mark_backups_to_keep(backup_plan, actual_backups):
-    now = datetime.now()
-
-    # Create the list of timestamps that we'd ideally like to see according to the backup plan.
-    desired_timestamps = []
-    for (interval, iterations) in backup_plan:
-        desired_timestamps.extend((now-i*interval for i in range(iterations+1)))
-    desired_timestamps.sort(reverse=True)
-    
-    actual_backups[-1].should_keep = True # Always keep the newest backup
-
-    # For each desired timestamp, we look for the youngest backup that's older than it. 
-    backup_idx = 0
-    for desired_timestamp in desired_timestamps:
-        for backup in actual_backups:
-            if desired_timestamp < backup.creation_time:
-                backup.should_keep = True
-                break
-
-
-def cleanup_command(backup_plan, path):
-    backups = list_backups(path)
-
-    mark_backups_to_keep(backup_plan, backups)
-
-    for b in backups:
-        op = "# keep " if b.should_keep else "rm -rf "
-        print(f'{op} {b.path}')
