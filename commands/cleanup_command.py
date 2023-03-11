@@ -22,52 +22,10 @@ import argparse
 import re
 
 from datetime import datetime, timedelta
+from common import list_backups
 from collections import namedtuple
 
 
-class Backup:
-    def __init__(self, path, creation_time):
-        self.creation_time = creation_time
-        self.path = path
- 
-    path = None
-    creation_time = None
-    should_keep = False
-
-
-def parse_datetime(datetime_str):
-    pattern = r'(\d{4})[-_]?(\d{2})[-_]?(\d{2})([-_Tt](\d{2})[_-](\d{2}))?'
-    match = re.fullmatch(pattern, datetime_str)
-    if match:
-        groups = match.groups()
-        year = int(groups[0])
-        month = int(groups[1])
-        day = int(groups[2])
-        hour = int(groups[4]) if groups[3] is not None else 0
-        minute = int(groups[5]) if groups[4] is not None else 0
-        second = 0
-        backup_time = datetime(year, month, day, hour, minute, second)
-        return backup_time
-    else:
-        raise ValueError("Invalid datetime format")
-
-def list_backups(path):
-    dirs = [e for e in os.scandir(path = path) if e.is_dir() and len(e.name)>=8 and e.name[0] != '.']
-
-    backups = []
-    for dir in dirs:
-        try:
-            backup_time =  parse_datetime(dir.name)
-            backups.append(Backup(path = dir.name, creation_time=backup_time))
-        except ValueError:
-            print(f'Ignoring "{dir.name}" since the name can\'t be parsed to date/time.')
-            continue
-
-    # Sort backups by time
-    def by_creation_time(b):
-        return b.creation_time
-    backups.sort(key=by_creation_time)
-    return backups
 
 
 def mark_backups_to_keep(backup_plan, actual_backups):
