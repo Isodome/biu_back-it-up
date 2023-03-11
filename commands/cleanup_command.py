@@ -22,35 +22,53 @@ import argparse
 import re
 
 from datetime import datetime, timedelta
+import sys
 from commands.common import list_backups
 from collections import namedtuple
 
+CleanupOptions = namedtuple(
+    "CleanupOptions", 'retention_plan force_delete path')
 
-def determine_backups_to_keep(backup_plan, actual_backups):
+
+def _count_backups_to_keep(backups):
+    return sum(1 for backup in backups if backup.should_keep)
+
+
+def determine_backups_to_keep(opts, backups):
     now = datetime.now()
 
+    # The number of backups we are allowed to keep. We can keep all of them if --force_delete is 0.
+    backup_budget = len(backups) - opts.force_delete
+
     # Create the list of timestamps that we'd ideally like to see according to the backup plan.
-    desired_timestamps = []
-    for (interval, iterations) in backup_plan:
-        desired_timestamps.extend(
-            (now-i*interval for i in range(iterations+1)))
-    desired_timestamps.sort(reverse=True)
+    backups[-1].should_keep = True  # Always keep the newest backup
 
-    actual_backups[-1].should_keep = True  # Always keep the newest backup
+    # We go through the various intervals in the user-specified order and "save" backups according to the plans from new to old.
+    for (interval, iterations) in opts.retention_plan:
+        desired_timestamps = [now-i*interval for i in range(iterations+1)]
+        for desired_timestamp in desired_timestamps:
 
-    # For each desired timestamp, we look for the youngest backup that's older than it.
-    backup_idx = 0
-    for desired_timestamp in desired_timestamps:
-        for backup in actual_backups:
-            if desired_timestamp < backup.creation_time:
-                backup.should_keep = True
-                break
+            if _count_backups_to_keep(backups) >= backup_budget:
+                print(
+                    f"# WARNING --force_delete={opts.force_delete} requires us to delete backups that are still within the retention plan.")
+                return
+            # Walk through the backups and keep the youngest backup that's older then the desired time.
+            for backup in backups:
+                if desired_timestamp < backup.creation_time:
+                    backup.should_keep = True
+                    break
 
 
-def cleanup_command(backup_plan, path):
-    backups = list_backups(path)
+def cleanup_command(opts):
+    backups = list_backups(opts.path)
 
-    determine_backups_to_keep(backup_plan, backups)
+    if len(backups) < 2:
+        return
+
+    if opts.force_delete >= len(backups):
+        sys.exit(f'User requested to delete all backups. Exiting.', 1)
+
+    determine_backups_to_keep(opts, backups)
 
     for b in backups:
         op = "# keep " if b.should_keep else "rm -rf "

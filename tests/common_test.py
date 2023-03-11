@@ -53,4 +53,3 @@ class TestCommon(unittest.TestCase):
         self.assertIsNone(parse_datetime("2023-03-11_12-60"))
         self.assertIsNone(parse_datetime("2023-02-29_11-11"))
         self.assertIsNone(parse_datetime("2022-1-1"))
-

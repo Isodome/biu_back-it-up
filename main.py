@@ -18,7 +18,7 @@
 import re
 
 import argparse
-from commands.cleanup_command import cleanup_command
+from commands.cleanup_command import cleanup_command, CleanupOptions
 from datetime import timedelta
 
 
@@ -41,34 +41,48 @@ def parse_duration(dur):
 
 
 def parse_backup_plan(arg):
-    plan = {}
-    intervals = arg.split(',')
-
     def parse_interval(interval):
         (k, v) = interval.split(":")
         return (parse_duration(k), int(v))
 
-    plan = {parse_interval(k) for k in intervals}
+    plan = [parse_interval(k) for k in arg.split(',')]
     return plan if len(plan) > 0 else None
 
 
-def parse_args():
+def positive_int(arg):
+    i = int(arg)
+    if i <= 0:
+        raise argparse.ArgumentTypeError(f'Illegal argument: {arg}')
+    return i
+
+
+def parse_arguments():
     parser = argparse.ArgumentParser(
         prog='backup-janitor',
-        description='What the program does',
-        epilog='Text at the bottom of help')
-    parser.add_argument('command')
-    parser.add_argument('-p', '--plan', required=True, type=parse_backup_plan)
+        description='a backup program')
+    subparsers = parser.add_subparsers(dest='command')
+
+    cleanup = subparsers.add_parser(
+        'cleanup', help='Removes obsolete backups')
+    cleanup.add_argument('-p', '--retention_plan',
+                         required=True, type=parse_backup_plan)
+    cleanup.add_argument('-f', '--force_delete',
+                         type=positive_int, default=0)
+    cleanup = subparsers.add_parser(
+        'backup', help='Creates a backup')
+
     parser.add_argument('path')
 
     return parser.parse_args()
 
 
 def main():
-    args = parse_args()
+    args = parse_arguments()
 
     if args.command == "cleanup":
-        cleanup_command(args.plan, args.path)
+        opts = CleanupOptions(
+            retention_plan=args.retention_plan, force_delete=args.force_delete, path=args.path)
+        cleanup_command(opts)
 
 
 if __name__ == '__main__':
