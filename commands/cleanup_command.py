@@ -22,24 +22,23 @@ import argparse
 import re
 
 from datetime import datetime, timedelta
-from common import list_backups
+from commands.common import list_backups
 from collections import namedtuple
 
 
-
-
-def mark_backups_to_keep(backup_plan, actual_backups):
+def determine_backups_to_keep(backup_plan, actual_backups):
     now = datetime.now()
 
     # Create the list of timestamps that we'd ideally like to see according to the backup plan.
     desired_timestamps = []
     for (interval, iterations) in backup_plan:
-        desired_timestamps.extend((now-i*interval for i in range(iterations+1)))
+        desired_timestamps.extend(
+            (now-i*interval for i in range(iterations+1)))
     desired_timestamps.sort(reverse=True)
-    
-    actual_backups[-1].should_keep = True # Always keep the newest backup
 
-    # For each desired timestamp, we look for the youngest backup that's older than it. 
+    actual_backups[-1].should_keep = True  # Always keep the newest backup
+
+    # For each desired timestamp, we look for the youngest backup that's older than it.
     backup_idx = 0
     for desired_timestamp in desired_timestamps:
         for backup in actual_backups:
@@ -51,7 +50,7 @@ def mark_backups_to_keep(backup_plan, actual_backups):
 def cleanup_command(backup_plan, path):
     backups = list_backups(path)
 
-    mark_backups_to_keep(backup_plan, backups)
+    determine_backups_to_keep(backup_plan, backups)
 
     for b in backups:
         op = "# keep " if b.should_keep else "rm -rf "
