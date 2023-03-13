@@ -20,6 +20,7 @@ import re
 import argparse
 from commands.cleanup_command import cleanup_command, CleanupOptions
 from datetime import timedelta
+from commands.cmd import Runner
 
 
 def parse_duration(dur):
@@ -79,10 +80,11 @@ def parse_arguments():
 def main():
     args = parse_arguments()
 
+    runner = Runner(dry_run=True)
     if args.command == "cleanup":
         opts = CleanupOptions(
             retention_plan=args.retention_plan, force_delete=args.force_delete, path=args.path)
-        cleanup_command(opts)
+        cleanup_command(opts, runner)
 
 
 if __name__ == '__main__':

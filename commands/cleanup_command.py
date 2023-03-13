@@ -24,6 +24,7 @@ import re
 from datetime import datetime, timedelta
 import sys
 from commands.common import list_backups
+import commands.cmd as cmd
 from collections import namedtuple
 
 CleanupOptions = namedtuple(
@@ -59,7 +60,7 @@ def determine_backups_to_keep(opts, backups):
                     break
 
 
-def cleanup_command(opts):
+def cleanup_command(opts, runner):
     backups = list_backups(opts.path)
 
     if len(backups) < 2:
@@ -71,5 +72,7 @@ def cleanup_command(opts):
     determine_backups_to_keep(opts, backups)
 
     for b in backups:
-        op = "# keep " if b.should_keep else "rm -rf "
-        print(f'{op} {b.path}')
+        if b.should_keep:
+            runner.comment(f'Keep {b.path}')
+        else:
+            runner.run("rm", ['-rf', b.path])
