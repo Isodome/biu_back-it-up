@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# backup-janitor
+# biu - back it up! 
 # Copyright (C) 2023  Dominic Rausch
 
 # This program is free software: you can redistribute it and/or modify
