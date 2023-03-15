@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# biu - back it up! 
+# biu - back it up!
 # Copyright (C) 2023  Dominic Rausch
 
 # This program is free software: you can redistribute it and/or modify
@@ -18,14 +18,16 @@
 
 import subprocess
 
+
 class Runner:
 
     dry_run = False
-    def __init__(self,dry_run):
+
+    def __init__(self, dry_run):
         self.dry_run = dry_run
 
-    def print_command(self, command, args):
-        print(f'{command} {" ".join(args)}') 
+    def print_command(self, args):
+        print(" ".join(args))
 
     def comment(self, comment):
         if self.dry_run:
@@ -33,9 +35,16 @@ class Runner:
         else:
             print(comment)
 
-    def run(self, command, args):
+    def run(self,  args):
+        self.print_command(args)
         if self.dry_run:
-            self.print_command(command, args)
             return
-        result = subprocess.run(command, *args, check=True)
-        print(result)
+        try:
+            # result = subprocess.run(
+            #     args, check=True, shell=True, capture_output=True)
+            result = subprocess.check_output(
+                args)
+            print(result)
+        except subprocess.CalledProcessError as e:
+            print(e.output, e)
+        

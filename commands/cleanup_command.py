@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# biu - back it up! 
+# biu - back it up!
 # Copyright (C) 2023  Dominic Rausch
 
 # This program is free software: you can redistribute it and/or modify
@@ -73,6 +73,6 @@ def cleanup_command(opts, runner):
 
     for b in backups:
         if b.should_keep:
-            runner.comment(f'Keep {b.path}')
+            runner.comment(f'Keep {b.directory.path}')
         else:
-            runner.run("rm", ['-rf', b.path])
+            runner.run(["rm", '-r', b.directory.path])

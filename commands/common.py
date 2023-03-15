@@ -22,11 +22,11 @@ from datetime import datetime
 
 
 class Backup:
-    def __init__(self, path, creation_time):
+    def __init__(self, directory, creation_time):
         self.creation_time = creation_time
-        self.path = path
+        self.directory = directory
 
-    path = None
+    directory = None
     creation_time = None
     should_keep = False
 
@@ -61,7 +61,7 @@ def list_backups(path):
     for dir in dirs:
         try:
             backup_time = parse_datetime(dir.name)
-            backups.append(Backup(path=dir.name, creation_time=backup_time))
+            backups.append(Backup(directory=dir, creation_time=backup_time))
         except ValueError:
             print(
                 f'Ignoring "{dir.name}" since the name can\'t be parsed to date/time.')

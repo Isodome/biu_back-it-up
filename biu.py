@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# biu - back it up! 
+# biu - back it up!
 # Copyright (C) 2023  Dominic Rausch
 
 # This program is free software: you can redistribute it and/or modify
@@ -18,9 +18,12 @@
 import re
 
 import argparse
+import sys
 from commands.cleanup_command import cleanup_command, CleanupOptions
+from commands.backup_command import backup_command, BackupOptions
 from datetime import timedelta
 from commands.cmd import Runner
+from pathlib import Path
 
 
 def parse_duration(dur):
@@ -59,8 +62,10 @@ def positive_int(arg):
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        prog='backup-janitor',
+        prog='biu',
         description='a backup program')
+    parser.add_argument('-n', '--dry_run',
+                        action=argparse.BooleanOptionalAction, default=True)
     subparsers = parser.add_subparsers(dest='command')
 
     cleanup = subparsers.add_parser(
@@ -69,10 +74,12 @@ def parse_arguments():
                          required=True, type=parse_backup_plan)
     cleanup.add_argument('-f', '--force_delete',
                          type=positive_int, default=0)
-    cleanup = subparsers.add_parser(
-        'backup', help='Creates a backup')
 
-    parser.add_argument('path')
+    backup = subparsers.add_parser('backup', help='Produces a new backup')
+    backup.add_argument('-t', '--temp_path', type=Path)
+    backup.add_argument('-s', '--source', type=Path, action='append')
+
+    parser.add_argument('path', type=Path)
 
     return parser.parse_args()
 
@@ -80,11 +87,17 @@ def parse_arguments():
 def main():
     args = parse_arguments()
 
-    runner = Runner(dry_run=True)
+    if not args.path.exists():
+        sys.exit(f'Backup path does not exist: {args.path}')
+
+    runner = Runner(dry_run=args.dry_run)
     if args.command == "cleanup":
         opts = CleanupOptions(
             retention_plan=args.retention_plan, force_delete=args.force_delete, path=args.path)
         cleanup_command(opts, runner)
+    elif args.command == 'backup':
+        opts = BackupOptions(backup_path=args.path, temp_path=args.temp_path)
+        backup_command(opts, runner)
 
 
 if __name__ == '__main__':
