@@ -63,6 +63,7 @@ def backup_command(opts, runner):
                       # No rsync deltas for local backups
                       '--whole-file',
                       ]
+    #TODO: --stats --info=progress2, --out-format
 
     if opts.archive_mode:
         # Some users may want to apply archive mode.
@@ -86,4 +87,4 @@ def backup_command(opts, runner):
     runner.run(backup_command)
 
     if tmp_dir:
-        runner.run(['mv', 'tmp_dir', backup_target])
+        runner.run(['mv', tmp_dir, backup_target])
