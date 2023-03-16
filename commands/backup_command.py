@@ -76,7 +76,7 @@ def backup_command(opts, runner):
         # We don't want to copy devices or special files (we don't even want to allow
         # them in the source)
         backup_command.extend([
-            '--recursive', ' --copy-links', '--times'
+            '--recursive', '--copy-links', '--times'
         ])
 
     if len(backups) > 0:
