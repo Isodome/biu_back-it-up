@@ -66,6 +66,7 @@ def parse_arguments():
         description='a backup program')
     parser.add_argument('-n', '--dry_run',
                         action=argparse.BooleanOptionalAction, default=True)
+
     subparsers = parser.add_subparsers(dest='command')
 
     cleanup = subparsers.add_parser(
@@ -74,12 +75,16 @@ def parse_arguments():
                          required=True, type=parse_backup_plan)
     cleanup.add_argument('-f', '--force_delete',
                          type=positive_int, default=0)
+    cleanup.add_argument('-b', '--backup_path', type=Path)
+
 
     backup = subparsers.add_parser('backup', help='Produces a new backup')
     backup.add_argument('-t', '--temp_path', type=Path)
-    backup.add_argument('-s', '--source', type=Path, action='append')
+    backup.add_argument('-s', '--source', type=Path,
+                        action='append', required=True)
+    backup.add_argument('-a', '--archive', type=bool)
+    backup.add_argument('-b', '--backup_path', type=Path)
 
-    parser.add_argument('path', type=Path)
 
     return parser.parse_args()
 
@@ -87,16 +92,17 @@ def parse_arguments():
 def main():
     args = parse_arguments()
 
-    if not args.path.exists():
+    if not args.backup_path.exists():
         sys.exit(f'Backup path does not exist: {args.path}')
 
     runner = Runner(dry_run=args.dry_run)
     if args.command == "cleanup":
         opts = CleanupOptions(
-            retention_plan=args.retention_plan, force_delete=args.force_delete, path=args.path)
+            retention_plan=args.retention_plan, force_delete=args.force_delete, path=args.backup_path)
         cleanup_command(opts, runner)
     elif args.command == 'backup':
-        opts = BackupOptions(backup_path=args.path, temp_path=args.temp_path)
+        opts = BackupOptions(backup_path=args.backup_path,
+                             temp_path=args.temp_path, source_paths=args.source, archive_mode=args.archive)
         backup_command(opts, runner)
 
 
