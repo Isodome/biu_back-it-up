@@ -80,7 +80,7 @@ def backup_command(opts, runner):
         ])
 
     if len(backups) > 0:
-        backup_command.extend(['--link_dest', backups[0].directory.path])
+        backup_command.extend(['--link-dest', backups[0].directory.path])
 
     backup_command.extend((str(p) for p in opts.source_paths))
     backup_command.append(tmp_dir or backup_target)
