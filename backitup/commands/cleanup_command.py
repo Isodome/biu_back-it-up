@@ -17,15 +17,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
-import os
-import argparse
-import re
-
-from datetime import datetime, timedelta
 import sys
+from datetime import datetime, timedelta
+from collections import namedtuple
+
 from commands.common import list_backups
 import commands.cmd as cmd
-from collections import namedtuple
 
 CleanupOptions = namedtuple(
     "CleanupOptions", 'retention_plan force_delete path')

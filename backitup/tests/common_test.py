@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# biu - back it up! 
+# biu - back it up!
 # Copyright (C) 2023  Dominic Rausch
 
 # This program is free software: you can redistribute it and/or modify
@@ -18,8 +18,9 @@
 
 
 import unittest
-from commands.common import parse_datetime
 from datetime import datetime
+
+from backitup.commands.common import parse_datetime
 
 
 class TestCommon(unittest.TestCase):

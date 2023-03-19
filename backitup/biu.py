@@ -15,15 +15,16 @@
 
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
-import re
 
+import re
 import argparse
 import sys
+from datetime import timedelta
+from pathlib import Path
+
 from commands.cleanup_command import cleanup_command, CleanupOptions
 from commands.backup_command import backup_command, BackupOptions
-from datetime import timedelta
 from commands.cmd import Runner
-from pathlib import Path
 
 
 def parse_duration(dur):
@@ -89,7 +90,7 @@ def parse_arguments():
 def main():
     args = parse_arguments()
 
-    if not args.backup_path.exists():
+    if args.backup_path and not args.backup_path.exists():
         sys.exit(f'Backup path does not exist: {args.path}')
 
     runner = Runner(dry_run=args.dry_run)

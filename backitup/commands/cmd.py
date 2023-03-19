@@ -47,4 +47,3 @@ class Runner:
             print(result)
         except subprocess.CalledProcessError as e:
             print(e.output, e)
-        
