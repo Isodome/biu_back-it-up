@@ -77,14 +77,11 @@ def parse_arguments():
                          type=positive_int, default=0)
     cleanup.add_argument('-b', '--backup_path', type=Path)
 
-
     backup = subparsers.add_parser('backup', help='Produces a new backup')
-    backup.add_argument('-t', '--temp_path', type=Path)
     backup.add_argument('-s', '--source', type=Path,
                         action='append', required=True)
     backup.add_argument('-a', '--archive', type=bool)
     backup.add_argument('-b', '--backup_path', type=Path)
-
 
     return parser.parse_args()
 

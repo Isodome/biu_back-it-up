@@ -31,8 +31,8 @@ CleanupOptions = namedtuple(
     "CleanupOptions", 'retention_plan force_delete path')
 
 
-def _count_backups_to_keep(backups):
-    return sum(1 for backup in backups if backup.should_keep)
+def _num_backups_to_keep(backups):
+    return len(backup for backup in backups if backup.should_keep)
 
 
 def determine_backups_to_keep(opts, backups):
@@ -46,10 +46,13 @@ def determine_backups_to_keep(opts, backups):
 
     # We go through the various intervals in the user-specified order and "save" backups according to the plans from new to old.
     for (interval, iterations) in opts.retention_plan:
-        desired_timestamps = [now-i*interval for i in range(iterations+1)]
+        desired_timestamps = (now-i*interval for i in range(iterations+1))
         for desired_timestamp in desired_timestamps:
 
-            if _count_backups_to_keep(backups) >= backup_budget:
+            num_backups_to_keep = _num_backups_to_keep(backups)
+            if num_backups_to_keep == len(backups):
+                return
+            if num_backups_to_keep >= backup_budget:
                 print(
                     f"# WARNING --force_delete={opts.force_delete} requires us to delete backups that are still within the retention plan.")
                 return

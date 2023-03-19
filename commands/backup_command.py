@@ -30,7 +30,6 @@ from commands.common import list_backups
 class BackupOptions:
     snapshot_date_pattern: str = '%Y-%m-%d_%H-%M'
     source_paths: list[pathlib.Path] = field(default_factory=list)
-    temp_path: pathlib.Path = None
     backup_path: pathlib.Path = None
     archive_mode: bool = False
 
@@ -48,22 +47,13 @@ def backup_command(opts, runner):
         sys.exit(
             f'The backup target directory "{backup_target}" already exists.')
 
-    tmp_dir: str = None
-    if opts.temp_path is not None:
-        if not opts.temp_path.is_dir():
-            sys.exit("FATAL: Temporary directory doesn't exist.")
-        tmp_dir = path.join(opts.temp_path, uuid.uuid4().hex)
-        runner.run(['mkdir', tmp_dir])
-
     backup_command = ['rsync',
                       # Propagate deletions
                       '--delete',
-                      # Since we're creating this backup in a tmp directory this is safe.
-                      '--inplace',
                       # No rsync deltas for local backups
                       '--whole-file',
                       ]
-    #TODO: --stats --info=progress2, --out-format
+    # TODO: --stats --info=progress2, --out-format
 
     if opts.archive_mode:
         # Some users may want to apply archive mode.
@@ -83,8 +73,5 @@ def backup_command(opts, runner):
         backup_command.extend(['--link-dest', backups[0].directory.path])
 
     backup_command.extend((str(p) for p in opts.source_paths))
-    backup_command.append(tmp_dir or backup_target)
+    backup_command.append =(backup_target)
     runner.run(backup_command)
-
-    if tmp_dir:
-        runner.run(['mv', tmp_dir, backup_target])
