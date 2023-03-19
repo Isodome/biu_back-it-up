@@ -84,21 +84,29 @@ def parse_arguments():
     backup.add_argument('-a', '--archive', type=bool)
     backup.add_argument('-b', '--backup_path', type=Path)
 
+    if len(sys.argv) == 1:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
     return parser.parse_args()
+
+
+def check_backup_path(args):
+    if not args.backup_path.exists():
+        sys.exit(f'Backup path does not exist: {args.path}')
 
 
 def main():
     args = parse_arguments()
 
-    if args.backup_path and not args.backup_path.exists():
-        sys.exit(f'Backup path does not exist: {args.path}')
-
     runner = Runner(dry_run=args.dry_run)
     if args.command == "cleanup":
+
+        check_backup_path(args)
         opts = CleanupOptions(
             retention_plan=args.retention_plan, force_delete=args.force_delete, path=args.backup_path)
         cleanup_command(opts, runner)
     elif args.command == 'backup':
+        check_backup_path(args)
         opts = BackupOptions(backup_path=args.backup_path,
                              temp_path=args.temp_path, source_paths=args.source, archive_mode=args.archive)
         backup_command(opts, runner)
