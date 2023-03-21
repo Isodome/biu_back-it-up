@@ -19,6 +19,14 @@
 import subprocess
 
 
+class BaseCommand:
+    def get_command():
+        pass
+
+    def setup_args(subparser):
+        pass
+
+
 class Runner:
 
     dry_run = False
@@ -26,8 +34,17 @@ class Runner:
     def __init__(self, dry_run):
         self.dry_run = dry_run
 
-    def print_command(self, args):
-        print(" ".join(args))
+    def for_shell(self, s):
+        if ' ' in s:
+            s = s.replace('"', r'\"')
+            return f'"{s}"'
+        return s
+
+    def print_command(self, args, stdout_to_file):
+        command = " ".join((self.for_shell(a) for a in args))
+        if stdout_to_file:
+            command += f' > "{stdout_to_file}"'
+        print(command)
 
     def comment(self, comment):
         if self.dry_run:
@@ -35,15 +52,14 @@ class Runner:
         else:
             print(comment)
 
-    def run(self,  args):
-        self.print_command(args)
+    def run(self,  args, stdout_to_file=None):
+        self.print_command(args, stdout_to_file)
         if self.dry_run:
             return
         try:
-            # result = subprocess.run(
-            #     args, check=True, shell=True, capture_output=True)
-            result = subprocess.check_output(
-                args)
+            outfile = open(stdout_to_file, 'w') if stdout_to_file else None
+            result = subprocess.run(
+                args, check=True, shell=False, stdout=outfile)
             print(result)
         except subprocess.CalledProcessError as e:
             print(e.output, e)

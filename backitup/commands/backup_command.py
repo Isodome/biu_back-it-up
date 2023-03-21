@@ -42,6 +42,7 @@ def backup_command(opts, runner):
 
     backup_target = path.join(
         opts.backup_path, datetime.now().strftime(opts.snapshot_date_pattern))
+    diffs_file = path.join(backup_target, 'changelog.txt')
     if path.isdir(backup_target):
         sys.exit(
             f'The backup target directory "{backup_target}" already exists.')
@@ -51,8 +52,11 @@ def backup_command(opts, runner):
                       '--delete',
                       # No rsync deltas for local backups
                       '--whole-file',
+                      # We want to list all the change files.
+                      '--out-format','%l %o %C %n',
+                      # The default algorithm outputs 128 bits. We're happy usin xxh3's 64 bits.
+                      '--checksum-choice=xxh3',
                       ]
-    # TODO: --stats --info=progress2, --out-format
 
     if opts.archive_mode:
         # Some users may want to apply archive mode.
@@ -73,4 +77,7 @@ def backup_command(opts, runner):
 
     backup_command.extend((str(p) for p in opts.source_paths))
     backup_command.append(backup_target)
-    runner.run(backup_command)
+
+    runner.run(['mkdir', backup_target])
+    runner.run(backup_command, stdout_to_file=diffs_file)
+    runner.run(['gzip', diffs_file])
