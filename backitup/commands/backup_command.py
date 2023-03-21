@@ -16,7 +16,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import uuid
 import sys
 import pathlib
 from datetime import datetime
@@ -70,8 +69,8 @@ def backup_command(opts, runner):
         ])
 
     if len(backups) > 0:
-        backup_command.extend(['--link-dest', backups[0].directory.path])
+        backup_command.extend(['--link-dest', backups[-1].directory.path])
 
     backup_command.extend((str(p) for p in opts.source_paths))
-    backup_command.append =(backup_target)
+    backup_command.append(backup_target)
     runner.run(backup_command)

@@ -75,4 +75,4 @@ def cleanup_command(opts, runner):
         if b.should_keep:
             runner.comment(f'Keep {b.directory.path}')
         else:
-            runner.run(["rm", '-r', b.directory.path])
+            runner.run(["rm", '-rf', b.directory.path])

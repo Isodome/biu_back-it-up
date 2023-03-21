@@ -108,7 +108,7 @@ def main():
     elif args.command == 'backup':
         check_backup_path(args)
         opts = BackupOptions(backup_path=args.backup_path,
-                             temp_path=args.temp_path, source_paths=args.source, archive_mode=args.archive)
+                             source_paths=args.source, archive_mode=args.archive)
         backup_command(opts, runner)
 
 
