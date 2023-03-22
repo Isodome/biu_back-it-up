@@ -29,7 +29,7 @@ CleanupOptions = namedtuple(
 
 
 def _num_backups_to_keep(backups):
-    return len(backup for backup in backups if backup.should_keep)
+    return len([backup for backup in backups if backup.should_keep])
 
 
 def determine_backups_to_keep(opts, backups):
