@@ -53,7 +53,7 @@ def backup_command(opts, runner):
                       # No rsync deltas for local backups
                       '--whole-file',
                       # We want to list all the change files.
-                      '--out-format','%l %o %C %n',
+                      '--out-format', '%l %o %C %n',
                       # The default algorithm outputs 128 bits. We're happy usin xxh3's 64 bits.
                       '--checksum-choice=xxh3',
                       ]
@@ -69,7 +69,7 @@ def backup_command(opts, runner):
         # We don't want to copy devices or special files (we don't even want to allow
         # them in the source)
         backup_command.extend([
-            '--recursive', '--copy-links', '--times'
+            '--recursive', '--copy-links', '--times', '--xattrs'
         ])
 
     if len(backups) > 0:
