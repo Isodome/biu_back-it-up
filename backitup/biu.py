@@ -92,7 +92,7 @@ def parse_arguments():
 
 def check_backup_path(args):
     if not args.backup_path.exists():
-        sys.exit(f'Backup path does not exist: {args.path}')
+        sys.exit(f'Backup path does not exist: {args.backup_path}')
 
 
 def main():

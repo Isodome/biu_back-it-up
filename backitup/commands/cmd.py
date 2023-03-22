@@ -35,7 +35,8 @@ class Runner:
         self.dry_run = dry_run
 
     def for_shell(self, s):
-        if ' ' in s:
+        special = [' ', '$', '?', '*', '!']
+        if any(c in s for c in special):
             s = s.replace('"', r'\"')
             return f'"{s}"'
         return s

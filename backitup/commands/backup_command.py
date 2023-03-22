@@ -80,4 +80,6 @@ def backup_command(opts, runner):
 
     runner.run(['mkdir', backup_target])
     runner.run(backup_command, stdout_to_file=diffs_file)
+    # Delete lines ending in /
+    runner.run(['sed', '-i', r'/\/$/d', diffs_file])
     runner.run(['gzip', diffs_file])
