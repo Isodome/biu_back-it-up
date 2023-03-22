@@ -53,7 +53,7 @@ def backup_command(opts, runner):
                       # No rsync deltas for local backups
                       '--whole-file',
                       # We want to list all the change files.
-                      '--out-format', '%l %o %C %n',
+                      '--out-format', '%o %C %M %n',
                       # The default algorithm outputs 128 bits. We're happy usin xxh3's 64 bits.
                       '--checksum-choice=xxh3',
                       ]
@@ -84,7 +84,6 @@ def backup_command(opts, runner):
     runner.run(backup_command, stdout_to_file=rsync_log)
     # Delete lines ending in /
     runner.run(['sed', '-i', r'/\/$/d', rsync_log])
-
-    # Unfortunatley link-dest forces us to detect deletions manually
+    runner.run(['sort', rsync_log, '-o', rsync_log])
 
     runner.run(['gzip', '-f', rsync_log])

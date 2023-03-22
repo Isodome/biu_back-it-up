@@ -52,8 +52,10 @@ def parse_datetime(datetime_str):
         except ValueError:
             return None
 
-def backup_log(backup_dir):
-    return os.path.join(backup_dir, 'backup.log')
+
+def backup_log(backup_dir, zipped=False):
+    return os.path.join(backup_dir, 'backup.log.gz' if zipped else 'backup.log')
+
 
 def list_backups(path):
     dirs = [e for e in os.scandir(
