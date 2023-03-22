@@ -20,7 +20,7 @@
 import unittest
 from datetime import datetime
 
-from backitup.commands.common import parse_datetime
+from commands.common import parse_datetime
 
 
 class TestCommon(unittest.TestCase):
