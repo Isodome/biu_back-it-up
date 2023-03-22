@@ -22,7 +22,7 @@ from datetime import datetime
 from os import path
 from dataclasses import dataclass, field
 
-from commands.common import list_backups
+from commands.common import list_backups, backup_log
 
 
 @dataclass
@@ -42,7 +42,7 @@ def backup_command(opts, runner):
 
     backup_target = path.join(
         opts.backup_path, datetime.now().strftime(opts.snapshot_date_pattern))
-    diffs_file = path.join(backup_target, 'changelog.txt')
+    rsync_log = backup_log(backup_target)
     if path.isdir(backup_target):
         sys.exit(
             f'The backup target directory "{backup_target}" already exists.')
@@ -73,13 +73,18 @@ def backup_command(opts, runner):
         ])
 
     if len(backups) > 0:
-        backup_command.extend(['--link-dest', backups[-1].directory.path])
+        runner.run(['cp', '-al', backups[-1].directory.path, backup_target])
+        runner.run(['rm', '-f', rsync_log])
+    else:
+        runner.run(['mkdir', backup_target])
 
     backup_command.extend((str(p) for p in opts.source_paths))
     backup_command.append(backup_target)
 
-    runner.run(['mkdir', backup_target])
-    runner.run(backup_command, stdout_to_file=diffs_file)
+    runner.run(backup_command, stdout_to_file=rsync_log)
     # Delete lines ending in /
-    runner.run(['sed', '-i', r'/\/$/d', diffs_file])
-    runner.run(['gzip', diffs_file])
+    runner.run(['sed', '-i', r'/\/$/d', rsync_log])
+
+    # Unfortunatley link-dest forces us to detect deletions manually
+
+    runner.run(['gzip', '-f', rsync_log])
