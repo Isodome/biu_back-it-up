@@ -64,10 +64,12 @@ def list_backups(path):
     backups = []
     for dir in dirs:
         backup_time = parse_datetime(dir.name)
-        if not backup_time:
+        if backup_time:
+            backups.append(Backup(directory=dir, creation_time=backup_time))
+        else:
             print(
                 f'Ignoring "{dir.name}" since the name can\'t be parsed to date/time.')
-        backups.append(Backup(directory=dir, creation_time=backup_time))
+        
 
     # Sort backups by time
     def by_creation_time(b):
