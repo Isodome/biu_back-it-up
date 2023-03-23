@@ -16,9 +16,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import gzip
 import re
 import os
+from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 
 
 class Backup:
@@ -69,10 +72,32 @@ def list_backups(path):
         else:
             print(
                 f'Ignoring "{dir.name}" since the name can\'t be parsed to date/time.')
-        
 
     # Sort backups by time
+
     def by_creation_time(b):
         return b.creation_time
     backups.sort(key=by_creation_time)
     return backups
+
+
+@dataclass
+class BackupLog:
+    class Operation(Enum):
+        WRITE = 1
+        DELETE = 2
+    op: Operation = None
+    hash = None
+    mtime: int = None
+    path: str = None
+
+
+def read_backup_log(gz_file_path):
+    with gzip.open(gz_file_path, 'rb') as f:
+        for line in f:
+            if f.startswith("send "):
+                hash, mtime, path = f[5:].strip().split(' ', 3)
+                yield BackupLog(op=BackupLog.Operation.WRITE, hash=int(hash, 16), mtime=parse_datetime(mtime), path=path)
+            elif f.startswith('del. '):
+                mtime, path = f[5:].strip().split(' ', 2)
+                yield BackupLog(op=BackupLog.Operation.DELETE, hash=0, mtime=parse_datetime(mtime), path=path)
