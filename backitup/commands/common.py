@@ -24,6 +24,17 @@ from datetime import datetime
 from enum import Enum
 
 
+@dataclass
+class BackupLogEntry:
+    class Operation(Enum):
+        WRITE = 1
+        DELETE = 2
+    op: Operation = None
+    hash: int = None
+    mtime: int = None
+    path: str = None
+
+
 class Backup:
     def __init__(self, directory, creation_time):
         self.creation_time = creation_time
@@ -32,6 +43,80 @@ class Backup:
     directory = None
     creation_time = None
     should_keep = False
+    _size_bytes = None
+
+    def backup_log_path(self):
+        return os.path.join(self.directory, 'backup.log.gz')
+
+    def backup_completed_path(self):
+        return os.path.join(self.directory, 'backup_completed.txt')
+
+    def read_backup_log(self, filter: BackupLogEntry.Operation = None):
+        return BackupLogIter(self.backup_log_path(), filter)
+
+
+class BackupLogIter:
+    path: str
+    f: gzip.GzipFile = None
+    cache: BackupLogEntry = None
+    filter = None
+    seek_position: int = 0
+
+    def __init__(self, path, filter):
+        if not os.path.isfile(path):
+            print(f"WARNING: {self.directory} has no backup log.")
+            return
+        self.path = path
+        self.filter = filter
+
+    def __iter__(self):
+        return self
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def suspend(self):
+        self.seek_position = self.f.tell()
+        self.close()
+
+    def resume(self):
+        self.f = gzip.open(self.path, 'rt')
+        self.f.seek(self.seek_position)
+
+    def close(self):
+        if self.f and not self.f.closed:
+            self.f.close()
+
+    def peek(self):
+        if not self.cache:
+            try:
+                self.cache = next(self)
+            except StopIteration:
+                self.close()
+                return None
+        return self.cache
+
+    def __next__(self):
+        if not self.f:
+            self.resume()
+        if self.cache:
+            tmp = self.cache
+            self.cache = None
+            return tmp
+        while True:
+            line = next(self.f)
+            if line.startswith("send ") and not self.filter or self.filter == BackupLogEntry.Operation.WRITE:
+                hash_hex, mtime, path = line[5:].strip().split(' ', 2)
+                hash_int = int(hash_hex, 16)
+                if hash_int <= 0:
+                    continue
+                return BackupLogEntry(op=BackupLogEntry.Operation.WRITE, hash=hash_int, mtime=parse_datetime(mtime), path=path)
+            elif line.startswith('del. ') and not self.filter or self.filter == BackupLogEntry.Operation.DELETE:
+                mtime, path = line[5:].strip().split(' ', 1)
+                return BackupLogEntry(op=BackupLogEntry.Operation.DELETE, hash=0, mtime=parse_datetime(mtime), path=path)
 
 
 def parse_datetime(datetime_str):
@@ -56,10 +141,6 @@ def parse_datetime(datetime_str):
             return None
 
 
-def backup_log(backup_dir, zipped=False):
-    return os.path.join(backup_dir, 'backup.log.gz' if zipped else 'backup.log')
-
-
 def list_backups(path):
     dirs = [e for e in os.scandir(
         path=path) if e.is_dir() and e.name[0] != '.']
@@ -79,25 +160,3 @@ def list_backups(path):
         return b.creation_time
     backups.sort(key=by_creation_time)
     return backups
-
-
-@dataclass
-class BackupLog:
-    class Operation(Enum):
-        WRITE = 1
-        DELETE = 2
-    op: Operation = None
-    hash = None
-    mtime: int = None
-    path: str = None
-
-
-def read_backup_log(gz_file_path):
-    with gzip.open(gz_file_path, 'rb') as f:
-        for line in f:
-            if f.startswith("send "):
-                hash, mtime, path = f[5:].strip().split(' ', 3)
-                yield BackupLog(op=BackupLog.Operation.WRITE, hash=int(hash, 16), mtime=parse_datetime(mtime), path=path)
-            elif f.startswith('del. '):
-                mtime, path = f[5:].strip().split(' ', 2)
-                yield BackupLog(op=BackupLog.Operation.DELETE, hash=0, mtime=parse_datetime(mtime), path=path)

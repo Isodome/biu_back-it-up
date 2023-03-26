@@ -24,6 +24,7 @@ from pathlib import Path
 
 from commands.cleanup_command import cleanup_command, CleanupOptions
 from commands.backup_command import backup_command, BackupOptions
+from commands.dedup_command import dedup_command, DedupOptions
 from commands.cmd import Runner
 
 
@@ -84,6 +85,9 @@ def parse_arguments():
     backup.add_argument('-a', '--archive', type=bool)
     backup.add_argument('-b', '--backup_path', type=Path)
 
+    dedup = subparsers.add_parser('dedup', help='Produces a new backup')
+    dedup.add_argument('-b', '--backup_path', type=Path)
+
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
         sys.exit(1)
@@ -110,6 +114,10 @@ def main():
         opts = BackupOptions(backup_path=args.backup_path,
                              source_paths=args.source, archive_mode=args.archive)
         backup_command(opts, runner)
+    elif args.command == 'dedup':
+        check_backup_path(args)
+        opts = DedupOptions(backup_path=args.backup_path)
+        dedup_command(opts, runner)
 
 
 if __name__ == '__main__':

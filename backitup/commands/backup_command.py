@@ -16,13 +16,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import uuid
 import sys
 import pathlib
 from datetime import datetime
 from os import path
 from dataclasses import dataclass, field
 
-from commands.common import list_backups, backup_log
+from commands.common import list_backups,  Backup
 
 
 @dataclass
@@ -40,12 +41,16 @@ def exists(path):
 def backup_command(opts, runner):
     backups = list_backups(opts.backup_path)
 
+    # Some paths
+    backup_time = datetime.now()
     backup_target = path.join(
-        opts.backup_path, datetime.now().strftime(opts.snapshot_date_pattern))
-    rsync_log = backup_log(backup_target)
+        opts.backup_path, backup_time.strftime(opts.snapshot_date_pattern))
     if path.isdir(backup_target):
         sys.exit(
             f'The backup target directory "{backup_target}" already exists.')
+
+    new_backup = Backup(backup_target, backup_time)
+    rsync_log_tmp = path.join(backup_target, uuid.uuid4().hex())
 
     backup_command = ['rsync',
                       # Propagate deletions
@@ -73,17 +78,22 @@ def backup_command(opts, runner):
         ])
 
     if len(backups) > 0:
-        runner.run(['cp', '-al', backups[-1].directory.path, backup_target])
-        runner.run(['rm', '-f', rsync_log])
+        runner.run(
+            ['cp', '-al', backups[-1].directory.path, new_backup.directory])
+        runner.run(['rm', '-f', new_backup.backup_log_path,
+                   new_backup.backup_completed_path])
     else:
-        runner.run(['mkdir', backup_target])
+        runner.run(['mkdir', new_backup.directory])
 
     backup_command.extend((str(p) for p in opts.source_paths))
-    backup_command.append(backup_target)
+    backup_command.append(new_backup.directory)
 
-    runner.run(backup_command, stdout_to_file=rsync_log)
+    runner.run(backup_command, stdout_to_file=rsync_log_tmp)
     # Delete lines ending in /
-    runner.run(['sed', '-i', r'/\/$/d', rsync_log])
-    runner.run(['sort', rsync_log, '-o', rsync_log])
+    runner.run(['sed', '-i', r'/\/$/d', rsync_log_tmp])
+    runner.run(['sort', rsync_log_tmp, '-o', rsync_log_tmp])
 
-    runner.run(['gzip', '-f', rsync_log])
+    runner.run(['xz', '-z', '-f', '--block-size=5120', rsync_log_tmp])
+    runner.run(['mv', rsync_log_tmp, new_backup.backup_log_path])
+    runner.run(['echo', 'The existence of this file means that the backup completed successfully',],
+               stdout_to_file=new_backup.backup_completed_path)
