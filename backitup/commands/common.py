@@ -17,6 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import gzip
+import pathlib
 import re
 import os
 from dataclasses import dataclass
@@ -34,7 +35,7 @@ class BackupLogEntry:
     op: FileOperation = None
     hash: int = None
     mtime: int = None
-    path: str = None
+    path: pathlib.Path = None
 
 
 class Backup:
@@ -42,7 +43,7 @@ class Backup:
         self.creation_time = creation_time
         self.directory = directory
 
-    directory = None
+    directory: pathlib.Path = None
     creation_time = None
     should_keep = False
     _size_bytes = None
@@ -116,10 +117,10 @@ class BackupLogIter:
                 hash_int = int(hash_hex, 16)
                 if hash_int <= 0:
                     continue
-                return BackupLogEntry(op=FileOperation.WRITE, hash=hash_int, mtime=parse_datetime(mtime), path=os.path.join(self.backup.directory, path))
+                return BackupLogEntry(op=FileOperation.WRITE, hash=hash_int, mtime=parse_datetime(mtime), path=self.backup.directory.joinpath(path))
             elif line.startswith('del. ') and not self.filter or self.filter == FileOperation.DELETE:
                 mtime, path = line[5:].strip().split(' ', 1)
-                return BackupLogEntry(op=FileOperation.DELETE, hash=0, mtime=parse_datetime(mtime), path=os.path.join(self.backup.directory, path))
+                return BackupLogEntry(op=FileOperation.DELETE, hash=0, mtime=parse_datetime(mtime), path=self.backup.directory.joinpath(path))
 
 
 def parse_datetime(datetime_str):
@@ -144,9 +145,8 @@ def parse_datetime(datetime_str):
             return None
 
 
-def list_backups(path):
-    dirs = [e for e in os.scandir(
-        path=path) if e.is_dir() and e.name[0] != '.']
+def list_backups(path: pathlib.Path):
+    dirs = [e for e in path.iterdir() if e.is_dir() and e.name[0] != '.']
 
     backups = []
     for dir in dirs:

@@ -23,44 +23,13 @@ import filecmp
 
 from dataclasses import dataclass
 from commands.common import list_backups, FileOperation
+from commands.compare_files import list_duplicate_of, group_duplicates
 from contextlib import ExitStack
 
 
 @dataclass
 class DedupOptions:
     backup_path: pathlib.Path = None
-
-
-def group_and_dedup(candidate_dups, runner):
-    if not candidate_dups:
-        return
-
-    unique_contents = []
-    for candidate_dup in candidate_dups:
-        dup = next((f for f in unique_contents if filecmp.cmp(
-            candidate_dup.path, f.path, shallow=False)), None)
-        if dup:
-            runner.run(
-                ['ln', '-f', dup.path, candidate_dup.path])
-        else:
-            unique_contents.append(candidate_dup)
-
-
-def deduplicate_against_existing_file(candidate_dups, existing_file, runner):
-    if not (existing_file and candidate_dups):
-        return candidate_dups
-
-    # Case 1: we found an existing file with the same hash.
-
-    no_dups = []
-    for candidate_dup in candidate_dups:
-        if filecmp.cmp(existing_file.path, candidate_dup.path, shallow=False):
-            runner.run(
-                ['ln', '-f', existing_file.path, candidate_dup.path])
-        else:
-            no_dups.append(candidate_dup)
-    # We found files that shared the hash with `existing_file` but contents didn't match.
-    return no_dups
 
 
 def batched_as_dict(backup_log, n: int):
@@ -80,15 +49,21 @@ def batched_as_dict(backup_log, n: int):
         batch_counter += 1
 
         if log_entry.hash == current_hash:
-            potential_dups.append(log_entry)
+            potential_dups.append(log_entry.path)
         else:
             result[current_hash] = potential_dups
             current_hash = log_entry.hash
             max_hash = current_hash
-            potential_dups = [log_entry]
+            potential_dups = [log_entry.path]
 
     result[current_hash] = potential_dups
     yield (result, min_hash, max_hash)
+
+
+def replace_files_with_links(target, files, runner):
+    for dup in files:
+        runner.run(
+            ['ln', '-f', str(target), str(dup)])
 
 
 def dedup_command(opts: DedupOptions, runner):
@@ -113,7 +88,6 @@ def dedup_command(opts: DedupOptions, runner):
 
             for old_backup_log in old_backup_logs:
                 old_backup_log.resume()
-
                 while old_backup_log.peek():
                     old_log_entry = old_backup_logs.peek()
                     old_file_hash = old_log_entry.hash
@@ -122,18 +96,22 @@ def dedup_command(opts: DedupOptions, runner):
                     if old_file_hash >= min_hash:
                         dups = entries_dict.pop(old_file_hash, None)
                         if dups:
-                            dups = deduplicate_against_existing_file(
-                                dups, old_log_entry.path, runner)
-                        # If the same-hash files don't have the same content, we need to put them back in our list.
-                        # This will happen extremley rarely - maybe never :)
-                        if dups:
-                            entries_dict[old_file_hash] = dups
+                            res = list_duplicate_of(old_log_entry.path, dups)
+                            # If the same-hash files don't have the same content, we need to put them back in our list.
+                            # This will happen extremley rarely - maybe never :)
+                            if res.no_dups:
+                                entries_dict[old_file_hash] = res.no_dups
+
+                            replace_files_with_links(
+                                old_log_entry.path, res.dups, runner)
 
                     next(old_backup_logs)
 
                 old_backup_log.suspend()
 
             # At this point we checked all the old backups. Entries that remain in the map are new files never seen before.
-            for dups in entries_dict.values():
-                if len(dups) > 1:
-                    group_and_dedup(dups, runner)
+            for p_dups in (pdups for pdups in entries_dict.values() if len(pdups) > 1):
+                for group_of_dupes in group_duplicates(p_dups):
+                    if len(group_of_dupes) > 1:
+                        replace_files_with_links(
+                            group_of_dupes[0], group_of_dupes[:1], runner)
