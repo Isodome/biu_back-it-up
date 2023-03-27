@@ -24,12 +24,14 @@ from datetime import datetime
 from enum import Enum
 
 
+class FileOperation(Enum):
+    WRITE = 1
+    DELETE = 2
+
+
 @dataclass
 class BackupLogEntry:
-    class Operation(Enum):
-        WRITE = 1
-        DELETE = 2
-    op: Operation = None
+    op: FileOperation = None
     hash: int = None
     mtime: int = None
     path: str = None
@@ -51,22 +53,23 @@ class Backup:
     def backup_completed_path(self):
         return os.path.join(self.directory, 'backup_completed.txt')
 
-    def read_backup_log(self, filter: BackupLogEntry.Operation = None):
-        return BackupLogIter(self.backup_log_path(), filter)
+    def read_backup_log(self, filter: FileOperation = None):
+        return BackupLogIter(self, filter)
 
 
 class BackupLogIter:
-    path: str
+
+    backup: Backup = None
     f: gzip.GzipFile = None
     cache: BackupLogEntry = None
     filter = None
     seek_position: int = 0
 
-    def __init__(self, path, filter):
-        if not os.path.isfile(path):
+    def __init__(self, backup, filter):
+        if not os.path.isfile(backup.backup_log_path()):
             print(f"WARNING: {self.directory} has no backup log.")
             return
-        self.path = path
+        self.backup = backup
         self.filter = filter
 
     def __iter__(self):
@@ -83,7 +86,7 @@ class BackupLogIter:
         self.close()
 
     def resume(self):
-        self.f = gzip.open(self.path, 'rt')
+        self.f = gzip.open(self.backup.backup_log_path(), 'rt')
         self.f.seek(self.seek_position)
 
     def close(self):
@@ -108,15 +111,15 @@ class BackupLogIter:
             return tmp
         while True:
             line = next(self.f)
-            if line.startswith("send ") and not self.filter or self.filter == BackupLogEntry.Operation.WRITE:
+            if line.startswith("send ") and not self.filter or self.filter == FileOperation.WRITE:
                 hash_hex, mtime, path = line[5:].strip().split(' ', 2)
                 hash_int = int(hash_hex, 16)
                 if hash_int <= 0:
                     continue
-                return BackupLogEntry(op=BackupLogEntry.Operation.WRITE, hash=hash_int, mtime=parse_datetime(mtime), path=path)
-            elif line.startswith('del. ') and not self.filter or self.filter == BackupLogEntry.Operation.DELETE:
+                return BackupLogEntry(op=FileOperation.WRITE, hash=hash_int, mtime=parse_datetime(mtime), path=os.path.join(self.backup.directory, path))
+            elif line.startswith('del. ') and not self.filter or self.filter == FileOperation.DELETE:
                 mtime, path = line[5:].strip().split(' ', 1)
-                return BackupLogEntry(op=BackupLogEntry.Operation.DELETE, hash=0, mtime=parse_datetime(mtime), path=path)
+                return BackupLogEntry(op=FileOperation.DELETE, hash=0, mtime=parse_datetime(mtime), path=os.path.join(self.backup.directory, path))
 
 
 def parse_datetime(datetime_str):

@@ -19,10 +19,10 @@
 
 import pathlib
 import os
-import itertools
+import filecmp
 
 from dataclasses import dataclass
-from commands.common import list_backups, BackupLogEntry
+from commands.common import list_backups, FileOperation
 from contextlib import ExitStack
 
 
@@ -31,11 +31,36 @@ class DedupOptions:
     backup_path: pathlib.Path = None
 
 
-def handle_dups(file_to_keep, dups, runner):
-    if not (file_to_keep and dups):
+def group_and_dedup(candidate_dups, runner):
+    if not candidate_dups:
         return
-    for dup in dups:
-        runner.run(['ln', '-f', file_to_keep.path, dup.path])
+
+    unique_contents = []
+    for candidate_dup in candidate_dups:
+        dup = next((f for f in unique_contents if filecmp.cmp(
+            candidate_dup.path, f.path, shallow=False)), None)
+        if dup:
+            runner.run(
+                ['ln', '-f', dup.path, candidate_dup.path])
+        else:
+            unique_contents.append(candidate_dup)
+
+
+def deduplicate_against_existing_file(candidate_dups, existing_file, runner):
+    if not (existing_file and candidate_dups):
+        return candidate_dups
+
+    # Case 1: we found an existing file with the same hash.
+
+    no_dups = []
+    for candidate_dup in candidate_dups:
+        if filecmp.cmp(existing_file.path, candidate_dup.path, shallow=False):
+            runner.run(
+                ['ln', '-f', existing_file.path, candidate_dup.path])
+        else:
+            no_dups.append(candidate_dup)
+    # We found files that shared the hash with `existing_file` but contents didn't match.
+    return no_dups
 
 
 def batched_as_dict(backup_log, n: int):
@@ -67,7 +92,7 @@ def batched_as_dict(backup_log, n: int):
 
 
 def dedup_command(opts: DedupOptions, runner):
-    backups = list_backups(opts.backup_path)[:-2]
+    backups = list_backups(opts.backup_path)[:-3]
     if len(backups) == 0:
         return
 
@@ -80,9 +105,9 @@ def dedup_command(opts: DedupOptions, runner):
     # Since we don't want to use too much memory at once, we'll read a batch of the new files and go through all the previous backup logs to look for dups.
     with ExitStack() as stack:
         new_backup_log = stack.enter_context(new_backup.read_backup_log(
-            filter=BackupLogEntry.Operation.WRITE))
+            filter=FileOperation.WRITE))
         old_backup_logs = [stack.enter_context(b.read_backup_log(
-            filter=BackupLogEntry.Operation.WRITE)) for b in old_backups]
+            filter=FileOperation.WRITE)) for b in old_backups]
 
         for (entries_dict, min_hash, max_hash) in batched_as_dict(new_backup_log, 5000):
 
@@ -97,7 +122,12 @@ def dedup_command(opts: DedupOptions, runner):
                     if old_file_hash >= min_hash:
                         dups = entries_dict.pop(old_file_hash, None)
                         if dups:
-                            handle_dups(old_log_entry.path, dups, runner)
+                            dups = deduplicate_against_existing_file(
+                                dups, old_log_entry.path, runner)
+                        # If the same-hash files don't have the same content, we need to put them back in our list.
+                        # This will happen extremley rarely - maybe never :)
+                        if dups:
+                            entries_dict[old_file_hash] = dups
 
                     next(old_backup_logs)
 
@@ -106,4 +136,4 @@ def dedup_command(opts: DedupOptions, runner):
             # At this point we checked all the old backups. Entries that remain in the map are new files never seen before.
             for dups in entries_dict.values():
                 if len(dups) > 1:
-                    handle_dups(dups[0], dups[1:], runner)
+                    group_and_dedup(dups, runner)
