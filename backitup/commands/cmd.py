@@ -16,15 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import subprocess
+import sys
 
-
-class BaseCommand:
-    def get_command():
-        pass
-
-    def setup_args(subparser):
-        pass
+from uuid import uuid4
 
 
 class Runner:
@@ -64,3 +60,16 @@ class Runner:
             print(result)
         except subprocess.CalledProcessError as e:
             print(e.output, e)
+
+    def link(self, target, link):
+        if self.dry_run:
+            self.print_command(
+                ['ln', '-f', str(target), str(link)])
+        else:
+            tmp = link.with_name(uuid4().hex())
+            try:
+                os.link(target, tmp)
+            except os.error as e:
+                os.remove(target)
+                sys.exit('Failed to create hardlink.')
+            os.replace(link, tmp)

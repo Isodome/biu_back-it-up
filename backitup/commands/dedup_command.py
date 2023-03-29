@@ -62,8 +62,7 @@ def batched_as_dict(backup_log, n: int):
 
 def replace_files_with_links(target, files, runner):
     for dup in files:
-        runner.run(
-            ['ln', '-f', str(target), str(dup)])
+        runner.link(target, dup)
 
 
 def dedup_command(opts: DedupOptions, runner):
