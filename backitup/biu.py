@@ -46,7 +46,10 @@ def parse_duration(dur):
     raise argparse.ArgumentTypeError("Malformed backup plan.")
 
 
-def parse_backup_plan(arg):
+def parse_retention_plan(arg):
+    if not arg:
+        return None
+
     def parse_interval(interval):
         (k, v) = interval.split(":")
         return (parse_duration(k), int(v))
@@ -56,9 +59,11 @@ def parse_backup_plan(arg):
 
 
 def positive_int(arg):
+    if not arg.isdigit():
+        return None
     i = int(arg)
-    if i <= 0:
-        raise argparse.ArgumentTypeError(f'Illegal argument: {arg}')
+    if i < 0:
+        return None
     return i
 
 
@@ -66,27 +71,17 @@ def parse_arguments():
     parser = argparse.ArgumentParser(
         prog='biu',
         description='a backup program')
+
+    parser.add_argument(
+        'command', type=str, help='Bla', choices=['backup', 'cleanup', 'dedup'])
     parser.add_argument('-n', '--dry_run',
                         action=argparse.BooleanOptionalAction, default=True)
-
-    subparsers = parser.add_subparsers(dest='command')
-
-    cleanup = subparsers.add_parser(
-        'cleanup', help='Removes obsolete backups')
-    cleanup.add_argument('-p', '--retention_plan',
-                         required=True, type=parse_backup_plan)
-    cleanup.add_argument('-f', '--force_delete',
-                         type=positive_int, default=0)
-    cleanup.add_argument('-b', '--backup_path', type=Path)
-
-    backup = subparsers.add_parser('backup', help='Produces a new backup')
-    backup.add_argument('-s', '--source', type=Path,
-                        action='append', required=True)
-    backup.add_argument('-a', '--archive', type=bool)
-    backup.add_argument('-b', '--backup_path', type=Path)
-
-    dedup = subparsers.add_parser('dedup', help='Produces a new backup')
-    dedup.add_argument('-b', '--backup_path', type=Path)
+    parser.add_argument('-b', '--backup_path', type=Path)
+    parser.add_argument('-p', '--retention_plan',
+                        default="1d:2,1w:4,1d:14,1w:8,1m:60", type=str)
+    parser.add_argument('-f', '--force_delete', type=str)
+    parser.add_argument('-s', '--source', type=Path, action='append')
+    parser.add_argument('-a', '--archive_mode', type=bool)
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -94,9 +89,62 @@ def parse_arguments():
     return parser.parse_args()
 
 
-def check_backup_path(args):
+def backup_path_from_args(args):
+    if not args.backup_path:
+        sys.exit("Required argument --backup_path was not provided.")
     if not args.backup_path.exists():
-        sys.exit(f'Backup path does not exist: {args.backup_path}')
+        sys.exit("The provided --backup_path does not exist.")
+    if not args.backup_path.is_dir():
+        sys.exit("The provided --backup_path is not a directory.")
+    return args.backup_path
+
+
+def source_from_args(args):
+    print('foo')
+    if not args.source:
+        sys.exit("Required argument --source was not provided.")
+    for source in args.source:
+        if not source.is_dir():
+            sys.exit(f"The provided --source={source} does not exist.")
+    return args.source
+
+
+def force_delete_from_args(args):
+    if args.force_delete and not positive_int(args.force_delete):
+        fd = positive_int(args.force_delete)
+        if fd is None or fd < 0:
+            sys.exit(
+                f'--force_delete={args.force_delete} not allowed. It must be a positive integer.')
+    return fd
+
+
+def retention_plan_from_args(args, optional=False):
+    if not args.retention_plan:
+        if optional:
+            return None
+        else:
+            sys.exit(f'Required argument --retention_plan was not provided.')
+    if not parse_retention_plan(args.retention_plan):
+        sys.exit(
+            f'--retention_plan={args.retention_plan} not allowed. Please read the docs to learn about retention plans.')
+    return parse_retention_plan(args.retention_plan)
+
+
+def dedup_options_from_args(args):
+    return DedupOptions(backup_path=backup_path_from_args(args))
+
+
+def cleanup_options_from_args(args):
+    return CleanupOptions(
+        retention_plan=retention_plan_from_args(args),
+        force_delete=force_delete_from_args(args),
+        path=backup_path_from_args(args))
+
+
+def backup_options_from_args(args):
+    return BackupOptions(backup_path=backup_path_from_args(args),
+                         source_paths=source_from_args(args),
+                         archive_mode=args.archive or False)
 
 
 def main():
@@ -104,20 +152,11 @@ def main():
 
     runner = Runner(dry_run=args.dry_run)
     if args.command == "cleanup":
-
-        check_backup_path(args)
-        opts = CleanupOptions(
-            retention_plan=args.retention_plan, force_delete=args.force_delete, path=args.backup_path)
-        cleanup_command(opts, runner)
+        cleanup_command(cleanup_options_from_args(args), runner)
     elif args.command == 'backup':
-        check_backup_path(args)
-        opts = BackupOptions(backup_path=args.backup_path,
-                             source_paths=args.source, archive_mode=args.archive)
-        backup_command(opts, runner)
+        backup_command(backup_options_from_args(args), runner)
     elif args.command == 'dedup':
-        check_backup_path(args)
-        opts = DedupOptions(backup_path=args.backup_path)
-        dedup_command(opts, runner)
+        dedup_command(dedup_options_from_args(args), runner)
 
 
 if __name__ == '__main__':

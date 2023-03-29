@@ -109,7 +109,7 @@ def dedup_command(opts: DedupOptions, runner):
 
                 old_backup_log.suspend()
 
-            # At this point we checked all the old backups. Entries that remain in the map are new files never seen before.
+            # At this point we checked all the old backups. Entries that remain in the map are new files that we never saw at an ealier date. We still may dedup them against each other.
             for p_dups in (pdups for pdups in entries_dict.values() if len(pdups) > 1):
                 for group_of_dupes in group_duplicates(p_dups):
                     if len(group_of_dupes) > 1:

@@ -155,7 +155,7 @@ def list_backups(path: pathlib.Path):
             backups.append(Backup(directory=dir, creation_time=backup_time))
         else:
             print(
-                f'Ignoring "{dir.name}" since the name can\'t be parsed to date/time.')
+                f'Found directory "{dir.name}" in the backup path. It will be ignored since the name can\'t be parsed to date/time.')
 
     # Sort backups by time
 

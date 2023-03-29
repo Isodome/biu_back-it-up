@@ -73,6 +73,6 @@ def cleanup_command(opts, runner):
 
     for b in backups:
         if b.should_keep:
-            runner.comment(f'Keep {b.directory.path}')
+            runner.comment(f'Keep {b.directory}')
         else:
-            runner.run(["rm", '-rf', b.directory.path])
+            runner.run(["rm", '-rf', b.directory])
