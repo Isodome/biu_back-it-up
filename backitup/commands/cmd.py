@@ -31,13 +31,14 @@ class Runner:
         self.dry_run = dry_run
 
     def for_shell(self, s):
+        s = str(s)
         special = [' ', '$', '?', '*', '!']
         if any(c in s for c in special):
             s = s.replace('"', r'\"')
             return f'"{s}"'
         return s
 
-    def print_command(self, args, stdout_to_file):
+    def print_command(self, args, stdout_to_file=None):
         command = " ".join((self.for_shell(a) for a in args))
         if stdout_to_file:
             command += f' > "{stdout_to_file}"'
@@ -50,26 +51,43 @@ class Runner:
             print(comment)
 
     def run(self,  args, stdout_to_file=None):
-        self.print_command(args, stdout_to_file)
+        str_args = [str(arg) for arg in args]
+        self.print_command(str_args, stdout_to_file)
         if self.dry_run:
             return
         try:
             outfile = open(stdout_to_file, 'w') if stdout_to_file else None
             result = subprocess.run(
-                args, check=True, shell=False, stdout=outfile)
+                str_args, check=True, shell=False, stdout=outfile)
             print(result)
         except subprocess.CalledProcessError as e:
             print(e.output, e)
+
+    def replace(self, src, dst):
+        if self.dry_run:
+            self.print_command(
+                ['mv', '-f', str(src), str(dst)])
+        else:
+            os.replace(src, dst)
 
     def link(self, target, link):
         if self.dry_run:
             self.print_command(
                 ['ln', '-f', str(target), str(link)])
         else:
-            tmp = link.with_name(uuid4().hex())
+            tmp = link.with_name(uuid4().hex)
+            print(tmp)
             try:
                 os.link(target, tmp)
             except os.error as e:
-                os.remove(target)
+                os.remove(tmp)
                 sys.exit('Failed to create hardlink.')
-            os.replace(link, tmp)
+            os.replace(tmp, link)
+
+    def remove(self, *files):
+        if self.dry_run:
+            self.print_command(
+                ['rm', '-f', files])
+        else:
+            for file in files:
+                os.remove(file)

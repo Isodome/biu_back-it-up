@@ -22,7 +22,7 @@ import os
 import filecmp
 
 from dataclasses import dataclass
-from commands.common import list_backups, FileOperation
+from commands.common import list_backups, FileOperation, BackupLogOrder
 from commands.compare_files import list_duplicate_of, group_duplicates
 from contextlib import ExitStack
 
@@ -66,7 +66,7 @@ def replace_files_with_links(target, files, runner):
 
 
 def dedup_command(opts: DedupOptions, runner):
-    backups = list_backups(opts.backup_path)[:-3]
+    backups = list_backups(opts.backup_path)
     if len(backups) == 0:
         return
 
@@ -78,24 +78,23 @@ def dedup_command(opts: DedupOptions, runner):
 
     # Since we don't want to use too much memory at once, we'll read a batch of the new files and go through all the previous backup logs to look for dups.
     with ExitStack() as stack:
-        new_backup_log = stack.enter_context(new_backup.read_backup_log(
-            filter=FileOperation.WRITE))
-        old_backup_logs = [stack.enter_context(b.read_backup_log(
-            filter=FileOperation.WRITE)) for b in old_backups]
-
+        new_backup_log = stack.enter_context(new_backup.read_backup_log(BackupLogOrder.BY_HASH,
+                                                                        filter=FileOperation.WRITE))
+        old_backup_logs = [stack.enter_context(b.read_backup_log(BackupLogOrder.BY_HASH,
+                                                                 filter=FileOperation.WRITE)) for b in old_backups]
+        
         for (entries_dict, min_hash, max_hash) in batched_as_dict(new_backup_log, 5000):
-
             for old_backup_log in old_backup_logs:
                 old_backup_log.resume()
                 while old_backup_log.peek():
-                    old_log_entry = old_backup_logs.peek()
+                    old_log_entry = old_backup_log.peek()
                     old_file_hash = old_log_entry.hash
                     if old_file_hash > max_hash:
                         break
                     if old_file_hash >= min_hash:
                         dups = entries_dict.pop(old_file_hash, None)
                         if dups:
-                            res = list_duplicate_of(old_log_entry.path, dups)
+                            res = list_duplicate_of(old_log_entry.path, [dup.path for dup in dups])
                             # If the same-hash files don't have the same content, we need to put them back in our list.
                             # This will happen extremley rarely - maybe never :)
                             if res.no_dups:
@@ -104,7 +103,7 @@ def dedup_command(opts: DedupOptions, runner):
                             replace_files_with_links(
                                 old_log_entry.path, res.dups, runner)
 
-                    next(old_backup_logs)
+                    next(old_backup_log)
 
                 old_backup_log.suspend()
 

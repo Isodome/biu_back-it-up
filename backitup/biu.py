@@ -100,7 +100,6 @@ def backup_path_from_args(args):
 
 
 def source_from_args(args):
-    print('foo')
     if not args.source:
         sys.exit("Required argument --source was not provided.")
     for source in args.source:
@@ -144,7 +143,7 @@ def cleanup_options_from_args(args):
 def backup_options_from_args(args):
     return BackupOptions(backup_path=backup_path_from_args(args),
                          source_paths=source_from_args(args),
-                         archive_mode=args.archive or False)
+                         archive_mode=args.archive_mode or False)
 
 
 def main():

@@ -20,6 +20,7 @@ import gzip
 import pathlib
 import re
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -28,6 +29,11 @@ from enum import Enum
 class FileOperation(Enum):
     WRITE = 1
     DELETE = 2
+
+
+class BackupLogOrder(Enum):
+    BY_PATH = 1
+    BY_HASH = 2
 
 
 @dataclass
@@ -47,31 +53,37 @@ class Backup:
     creation_time = None
     should_keep = False
     _size_bytes = None
+    sorted_by_hash_tmp_file = None
 
     def backup_log_path(self):
-        return os.path.join(self.directory, 'backup.log.gz')
+        return os.path.join(self.directory, 'backup.log')
 
     def backup_completed_path(self):
         return os.path.join(self.directory, 'backup_completed.txt')
 
-    def read_backup_log(self, filter: FileOperation = None):
-        return BackupLogIter(self, filter)
+    def read_backup_log(self, order: BackupLogOrder, filter: FileOperation = None):
+        if not order:
+            sys.exit("")
+        return BackupLogIter(self, self.backup_log_path(), filter)
 
 
 class BackupLogIter:
 
     backup: Backup = None
-    f: gzip.GzipFile = None
+    log_file: str = None
+    file_handle = None
+
     cache: BackupLogEntry = None
     filter = None
     seek_position: int = 0
 
-    def __init__(self, backup, filter):
-        if not os.path.isfile(backup.backup_log_path()):
-            print(f"WARNING: {self.directory} has no backup log.")
+    def __init__(self, backup, log_file, filter):
+        if not os.path.isfile(log_file):
+            print(f"WARNING: {backup.directory} has no backup log.")
             return
         self.backup = backup
         self.filter = filter
+        self.log_file = log_file
 
     def __iter__(self):
         return self
@@ -83,16 +95,17 @@ class BackupLogIter:
         self.close()
 
     def suspend(self):
-        self.seek_position = self.f.tell()
-        self.close()
+        if not self.file_handle.closed:
+            self.seek_position = self.file_handle.tell()
+            self.close()
 
     def resume(self):
-        self.f = gzip.open(self.backup.backup_log_path(), 'rt')
-        self.f.seek(self.seek_position)
+        self.file_handle = open(self.log_file, 'r')
+        self.file_handle.seek(self.seek_position)
 
     def close(self):
-        if self.f and not self.f.closed:
-            self.f.close()
+        if self.file_handle and not self.file_handle.closed:
+            self.file_handle.close()
 
     def peek(self):
         if not self.cache:
@@ -104,22 +117,24 @@ class BackupLogIter:
         return self.cache
 
     def __next__(self):
-        if not self.f:
+        if not self.file_handle:
             self.resume()
         if self.cache:
             tmp = self.cache
             self.cache = None
             return tmp
         while True:
-            line = next(self.f)
-            if line.startswith("send ") and not self.filter or self.filter == FileOperation.WRITE:
-                hash_hex, mtime, path = line[5:].strip().split(' ', 2)
+            line = self.file_handle.readline()
+            if not line:
+                raise StopIteration
+            if self.filter == FileOperation.WRITE and line.startswith("send"):
+                hash_hex, mtime, path = line[5:].strip().split(';', 2)
                 hash_int = int(hash_hex, 16)
                 if hash_int <= 0:
                     continue
                 return BackupLogEntry(op=FileOperation.WRITE, hash=hash_int, mtime=parse_datetime(mtime), path=self.backup.directory.joinpath(path))
-            elif line.startswith('del. ') and not self.filter or self.filter == FileOperation.DELETE:
-                mtime, path = line[5:].strip().split(' ', 1)
+            elif self.filter == FileOperation.DELETE and line.startswith('del.'):
+                mtime, path = line[5:].strip().split(';', 1)
                 return BackupLogEntry(op=FileOperation.DELETE, hash=0, mtime=parse_datetime(mtime), path=self.backup.directory.joinpath(path))
 
 
