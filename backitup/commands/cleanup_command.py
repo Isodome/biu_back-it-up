@@ -17,15 +17,19 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import pathlib
 import sys
 from datetime import datetime, timedelta
-from collections import namedtuple
+from dataclasses import dataclass
+from typing import List, Tuple
+from backitup.backups.backup import list_backups
 
-from commands.common import list_backups
-import commands.cmd as cmd
 
-CleanupOptions = namedtuple(
-    "CleanupOptions", 'retention_plan force_delete path')
+@dataclass
+class CleanupOptions:
+    retention_plan: List[Tuple[timedelta, int]]
+    force_delete: int | None
+    backup_path: pathlib.Path
 
 
 def _num_backups_to_keep(backups):
@@ -41,7 +45,8 @@ def determine_backups_to_keep(opts, backups):
     # Create the list of timestamps that we'd ideally like to see according to the backup plan.
     backups[-1].should_keep = True  # Always keep the newest backup
 
-    # We go through the various intervals in the user-specified order and "save" backups according to the plans from new to old.
+    # We go through the various intervals in the user-specified order and "save" backups according to the
+    # plans from new to old.
     for (interval, iterations) in opts.retention_plan:
         desired_timestamps = (now-i*interval for i in range(iterations+1))
         for desired_timestamp in desired_timestamps:
@@ -51,7 +56,8 @@ def determine_backups_to_keep(opts, backups):
                 return
             if num_backups_to_keep >= backup_budget:
                 print(
-                    f"# WARNING --force_delete={opts.force_delete} requires us to delete backups that are still within the retention plan.")
+                    f'# WARNING --force_delete={opts.force_delete} requires us to delete '
+                    'backups that are still within the retention plan.')
                 return
             # Walk through the backups and keep the youngest backup that's older then the desired time.
             for backup in backups:

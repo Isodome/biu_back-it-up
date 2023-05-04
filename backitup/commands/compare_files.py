@@ -1,4 +1,22 @@
-import os
+#!/usr/bin/env python3
+
+# biu - back it up!
+# Copyright (C) 2023  Dominic Rausch
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+import pathlib
 import stat
 from collections import namedtuple
 
@@ -29,7 +47,7 @@ def file_bytes_are(bytes, path):
 DedupResult = namedtuple("DedupResult", "dups no_dups")
 
 
-def list_duplicate_of(existing_file: str, candidate_dups):
+def find_content_duplicates_of(existing_file: pathlib.Path, candidate_dups):
     if not (existing_file and candidate_dups):
         return DedupResult(dups=[], no_dups=candidate_dups)
 
@@ -61,7 +79,7 @@ def group_duplicates(candidate_dups):
 
     while no_dups:
         cand = no_dups[0]
-        dups, no_dups = list_duplicate_of(cand, no_dups[1:])
+        dups, no_dups = find_content_duplicates_of(cand, no_dups[1:])
         dups.append(cand)
         result.append(dups)
     return result

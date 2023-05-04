@@ -28,7 +28,7 @@ from commands.dedup_command import dedup_command, DedupOptions
 from commands.cmd import Runner
 
 
-def parse_duration(dur):
+def parse_duration(dur) -> timedelta:
     if len(dur) < 2:
         raise argparse.ArgumentTypeError("Malformed backup plan.")
     if not re.fullmatch(r'[0-9]+', dur[:-1]):
@@ -82,6 +82,7 @@ def parse_arguments():
     parser.add_argument('-f', '--force_delete', type=str)
     parser.add_argument('-s', '--source', type=Path, action='append')
     parser.add_argument('-a', '--archive_mode', type=bool)
+    parser.add_argument('-bs', '--batch_size', type=int, default=5000)
 
     if len(sys.argv) == 1:
         parser.print_help(sys.stderr)
@@ -110,34 +111,45 @@ def source_from_args(args):
 
 def force_delete_from_args(args):
     if args.force_delete and not positive_int(args.force_delete):
-        fd = positive_int(args.force_delete)
-        if fd is None or fd < 0:
-            sys.exit(
-                f'--force_delete={args.force_delete} not allowed. It must be a positive integer.')
-    return fd
-
-
-def retention_plan_from_args(args, optional=False):
-    if not args.retention_plan:
-        if optional:
-            return None
-        else:
-            sys.exit(f'Required argument --retention_plan was not provided.')
-    if not parse_retention_plan(args.retention_plan):
         sys.exit(
-            f'--retention_plan={args.retention_plan} not allowed. Please read the docs to learn about retention plans.')
-    return parse_retention_plan(args.retention_plan)
+            f'--force_delete={args.force_delete} not allowed. It must be a '
+            'positive integer.')
+    return positive_int(args.force_delete)
+
+
+def batch_size_from_args(args):
+    if not args.batch_size:
+        sys.exit(
+            f'--batch_size={args.batch_size} is required.')
+    batch_size = positive_int(args.batch_size)
+    if not batch_size:
+        sys.exit(
+            f'--batch_size={args.batch_size} must be a positive integer value.')
+    return batch_size
+
+
+def retention_plan_from_args(args):
+    if not args.retention_plan:
+        sys.exit('Required argument --retention_plan was not provided.')
+    retention_plan = parse_retention_plan(args.retention_plan)
+    if not retention_plan:
+        sys.exit(
+            f'--retention_plan={args.retention_plan} not allowed. Please read'
+            ' the docs to learn about retention plans.')
+    return retention_plan
 
 
 def dedup_options_from_args(args):
-    return DedupOptions(backup_path=backup_path_from_args(args))
+    return DedupOptions(
+        backup_path=backup_path_from_args(args),
+        batch_size=batch_size_from_args(args))
 
 
 def cleanup_options_from_args(args):
     return CleanupOptions(
         retention_plan=retention_plan_from_args(args),
         force_delete=force_delete_from_args(args),
-        path=backup_path_from_args(args))
+        backup_path=backup_path_from_args(args))
 
 
 def backup_options_from_args(args):

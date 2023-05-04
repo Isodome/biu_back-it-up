@@ -23,14 +23,14 @@ from datetime import datetime
 from os import path
 from dataclasses import dataclass, field
 
-from commands.common import list_backups,  Backup
+from backitup.backups.backup import list_backups, Backup
 
 
 @dataclass
 class BackupOptions:
     snapshot_date_pattern: str = '%Y-%m-%d_%H-%M'
     source_paths: list[pathlib.Path] = field(default_factory=list)
-    backup_path: pathlib.Path = None
+    backup_path: pathlib.Path | None = None
     archive_mode: bool = False
 
 
@@ -58,6 +58,12 @@ def backup_command(opts, runner):
                       # No rsync deltas for local backups
                       '--whole-file',
                       # We want a list of all the changed files.
+                      # Doc: https://linux.die.net/man/5/rsyncd.conf under "log format"
+                      # We keep:
+                      # * %o: The operation (Send or Del.)
+                      # * %C: The checksum
+                      # * $M: The mtime of the file
+                      # * %n: the name/path of the file.
                       '--out-format', '%o;%C;%M;%n',
                       # The default algorithm outputs 128 bits. We're happy usin xxh3's 64 bits.
                       '--checksum-choice=xxh3',
@@ -74,7 +80,7 @@ def backup_command(opts, runner):
         # We don't want to copy devices or special files (we don't even want to allow
         # them in the source)
         backup_command.extend([
-            '--recursive', '--copy-links', '--times', '--xattrs'
+            '--recursive', '--links', '--times', '--xattrs'
         ])
 
     if len(backups) > 0:
@@ -86,7 +92,7 @@ def backup_command(opts, runner):
         runner.run(['mkdir', new_backup.directory])
 
     backup_command.extend((str(p) for p in opts.source_paths))
-    backup_command.append(new_backup.directory)
+    backup_command.append(str(new_backup.directory))
 
     runner.run(backup_command, stdout_to_file=rsync_log_tmp)
     # Delete lines ending in /
