@@ -50,8 +50,8 @@ def list_backups(path: pathlib.Path):
 
 class FileOperation(Enum):
     ALL = ''
-    WRITE = 'send'
-    DELETE = 'del.'
+    WRITE = '+'
+    DELETE = '-'
 
 
 class BackupLogOrder(Enum):
@@ -121,14 +121,14 @@ class BackupLogIter:
 
     filter: FileOperation
 
-    def __init__(self, backup, log_file, filter):
+    def __init__(self, backup, log_file, filter: FileOperation):
         if not os.path.isfile(log_file):
             print(f"WARNING: {backup.directory} has no backup log.")
             return
         self.backup = backup
         self.filter = filter
         self.file_handle = ResumableFile(
-            log_file, filter.name() if filter else '')
+            log_file, filter.value if filter else '')
 
     def __iter__(self):
         return self
@@ -148,15 +148,15 @@ class BackupLogIter:
     def ToBackupLogEntry(self, log_line: str | None):
         if not log_line:
             return None
-        op, hash_hex, mtime, path = log_line.strip().split(';', 2)
+        op, hash_hex, mtime, path = log_line.strip().split(';', 3)
         return BackupLogEntry(
-            op=FileOperation[op],
+            op=FileOperation(op),
             hash=hash_hex.strip(),
             mtime=mtime,
             path=self.backup.directory.joinpath(path))
 
     def peek(self):
-        return self.ToBackupLogEntry(self, self.file_handle.peek())
+        return self.ToBackupLogEntry(self.file_handle.peek())
 
     def __next__(self):
-        return self.ToBackupLogEntry(self, next(self.file_handle))
+        return self.ToBackupLogEntry(next(self.file_handle))

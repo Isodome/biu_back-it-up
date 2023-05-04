@@ -13,8 +13,10 @@ class Repo:
         self.tmp_path = tmp_path
         self.backup_path().mkdir(parents=True, exist_ok=True)
 
-    def data_path(self, data_dir=DEFAULT_DATA_DIR):
-        return self.tmp_path.joinpath(data_dir)
+    def data_path(self, data_dir=DEFAULT_DATA_DIR, file_name=None):
+        if file_name is None:
+            return self.tmp_path.joinpath(data_dir)
+        return self.tmp_path.joinpath(data_dir).joinpath(file_name)
 
     def delete_file(self, path, data_dir=DEFAULT_DATA_DIR):
         path = self.data_path(data_dir).joinpath(path)

@@ -4,7 +4,7 @@ import io
 
 class ResumableFile:
     path: str
-    file_handle: io.TextIOBase
+    file_handle: io.TextIOBase | None = None
     seek_position: int = 0
     peek_cache: str = ''
 
@@ -22,7 +22,7 @@ class ResumableFile:
         self.close()
 
     def suspend(self):
-        if not self.file_handle.closed:
+        if self.file_handle and not self.file_handle.closed:
             self.seek_position = self.file_handle.tell()
             self.close()
 
@@ -40,13 +40,13 @@ class ResumableFile:
             self.file_handle.close()
 
     def __next__(self):
-        if not self.file_handle:
-            self.file_handle = open(self.path, 'r')
-            self.file_handle.seek(self.seek_position)
         if self.peek_cache:
             tmp = self.peek_cache
             self.peek_cache = ''
             return tmp
+        if not self.file_handle:
+            self.file_handle = open(self.path, 'r')
+            self.file_handle.seek(self.seek_position)
 
         while True:
             line = self.file_handle.readline()

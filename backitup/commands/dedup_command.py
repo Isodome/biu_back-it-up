@@ -20,14 +20,15 @@
 import pathlib
 from dataclasses import dataclass
 from typing import List
-from backups.backup import (
+from contextlib import ExitStack
+
+from backitup.backups.backup import (
     list_backups,
     FileOperation,
     BackupLogOrder,
     BackupLogEntry,
     BackupLogIter)
-from commands.compare_files import find_content_duplicates_of, group_duplicates
-from contextlib import ExitStack
+from backitup.commands.compare_files import find_content_duplicates_of, group_duplicates
 
 
 @dataclass
@@ -39,7 +40,7 @@ class DedupOptions:
 def dedup_key(log_entry: BackupLogEntry):
     # This works ok since the log entries are already sorted by hash.
     # Collisions are extremly unlikely at this point.
-    return log_entry.hash ^ log_entry.mtime
+    return log_entry.hash + log_entry.mtime
 
 
 def batched_as_dict(backup_log, n: int):
@@ -47,7 +48,7 @@ def batched_as_dict(backup_log, n: int):
         return
 
     prev_key = dedup_key(backup_log.peek())
-    min_hash = max_hash = backup_log.peek.hash()
+    min_hash = max_hash = backup_log.peek().hash
     potential_dups = [next(backup_log)]
     result = dict()
 
@@ -126,7 +127,7 @@ def dedup_command(opts: DedupOptions, runner):
 
     runner.comment(
         f'Deduping {new_backup.directory.name}'
-        ' against {len(old_backups)} previous backup(s).')
+        f' against {len(old_backups)} previous backup(s).')
 
     with ExitStack() as stack:
         new_backup_log = stack.enter_context(
