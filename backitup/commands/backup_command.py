@@ -86,8 +86,7 @@ def backup_command(opts, runner):
     if len(backups) > 0:
         runner.run(
             ['cp', '-al', backups[-1].directory, new_backup.directory])
-        runner.remove(new_backup.backup_log_path(),
-                      new_backup.backup_completed_path())
+        runner.remove(new_backup.backup_log_path())
     else:
         runner.run(['mkdir', new_backup.directory])
 
@@ -95,11 +94,14 @@ def backup_command(opts, runner):
     backup_command.append(str(new_backup.directory))
 
     runner.run(backup_command, stdout_to_file=rsync_log_tmp)
-    # Delete lines ending in /
-    runner.run(['sed', '-i', r'/\/$/d', rsync_log_tmp])
+
+    # Modify the backup log a bit to save storage space (we don't want to zip)
+    runner.run(['sed', '-i',
+                '-e', r'/\/$/d',  # Delete lines ending in / (=folders)
+                '-e', r's/^send/+/',  # Replace send with +
+                '-e', r's/^del./-/',  # Replace del. with -
+                rsync_log_tmp])
     runner.run(['sort', rsync_log_tmp, '-o', rsync_log_tmp])
 
     runner.replace(rsync_log_tmp, new_backup.backup_log_path())
     rsync_log_tmp.unlink(missing_ok=True)
-    runner.run(['echo', 'The existence of this file means that the backup completed successfully',],
-               stdout_to_file=new_backup.backup_completed_path())
