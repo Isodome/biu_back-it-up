@@ -19,6 +19,9 @@
 import pathlib
 import stat
 from collections import namedtuple
+from typing import List
+
+from backitup.backups.backup import BackupLogEntry
 
 BUFFER_SIZE = 10*1024
 
@@ -47,23 +50,23 @@ def file_bytes_are(bytes, path):
 DedupResult = namedtuple("DedupResult", "dups no_dups")
 
 
-def find_content_duplicates_of(existing_file: pathlib.Path, candidate_dups):
-    if not (existing_file and candidate_dups):
+def find_content_duplicates_of(hero_file: pathlib.Path, candidate_dups):
+    if not (hero_file and candidate_dups):
         return DedupResult(dups=[], no_dups=candidate_dups)
 
-    stat_ex = existing_file.stat()
+    stat_ex = hero_file.stat()
     if not stat.S_ISREG(stat_ex.st_mode):
         return DedupResult(dups=[], no_dups=candidate_dups)
 
     buffer = None
     if len(candidate_dups) > 1 and stat_ex.st_size <= BUFFER_SIZE:
-        buffer = read_whole_file(existing_file)
+        buffer = read_whole_file(hero_file)
 
     no_dups = []
     dups = []
     for candidate_dup in candidate_dups:
         identical = file_bytes_are(buffer, candidate_dup) if buffer else file_contents_identical(
-            existing_file, candidate_dup)
+            hero_file, candidate_dup)
         if identical:
             dups.append(candidate_dup)
         else:
@@ -71,7 +74,15 @@ def find_content_duplicates_of(existing_file: pathlib.Path, candidate_dups):
     return DedupResult(dups=dups, no_dups=no_dups)
 
 
-def group_duplicates(candidate_dups):
+def group_duplicates(candidate_dups: List[BackupLogEntry]):
+    """Finds all duplicates in a list of files.
+
+    Args:
+        candidate_dups (List[BackupLogEntry]): a list of files
+
+    Returns:
+        List[List[BackupLogEntry]]: A list of lists. Each list contains a set of dups.
+    """
     if not candidate_dups:
         return []
     result = []
@@ -79,7 +90,8 @@ def group_duplicates(candidate_dups):
 
     while no_dups:
         cand = no_dups[0]
-        dups, no_dups = find_content_duplicates_of(cand, no_dups[1:])
-        dups.append(cand)
+        dups, no_dups = find_content_duplicates_of(
+            cand.path, [f.path for f in no_dups[1:]])
+        dups.append(cand.path)
         result.append(dups)
     return result

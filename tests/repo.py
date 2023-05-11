@@ -51,5 +51,7 @@ class Repo:
         ino = full_paths[0].stat().st_ino
         for path in full_paths[1:]:
             if path.stat().st_ino != ino:
+                print(f"Found inode missmatch: {paths[0]} != {path}")
                 return False
+
         return True

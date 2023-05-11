@@ -17,6 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
+import pathlib
 import subprocess
 import sys
 
@@ -70,13 +71,12 @@ class Runner:
         else:
             os.replace(src, dst)
 
-    def link(self, target, link):
+    def link(self, target, link: pathlib.Path):
         if self.dry_run:
             self.print_command(
                 ['ln', '-f', str(target), str(link)])
         else:
             tmp = link.with_name(uuid4().hex)
-            print(tmp)
             try:
                 os.link(target, tmp)
             except os.error as e:

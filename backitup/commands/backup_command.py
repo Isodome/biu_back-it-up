@@ -101,7 +101,7 @@ def backup_command(opts, runner):
                 '-e', r's/^send/+/',  # Replace send with +
                 '-e', r's/^del./-/',  # Replace del. with -
                 rsync_log_tmp])
-    runner.run(['sort', rsync_log_tmp, '-o', rsync_log_tmp])
+    runner.run(['sort', rsync_log_tmp, '-s', '-o',  rsync_log_tmp])
 
     runner.replace(rsync_log_tmp, new_backup.backup_log_path())
     rsync_log_tmp.unlink(missing_ok=True)
