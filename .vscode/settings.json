@@ -1,19 +1,11 @@
 {
-    "python.analysis.typeCheckingMode": "basic",
-    "python.formatting.autopep8Path": "autopep8",
-    "python.languageServer": "Pylance",
-    "python.linting.enabled": true,
-    "python.linting.flake8Args": ["--max-line-length=120"],
-    "python.linting.flake8Enabled": true,
-    "python.linting.pylintEnabled": false,
-    "flake8.importStrategy": "fromEnvironment",
-    "files.exclude": {
-        "**/__pycache__": true,
-        "**/.pytest_cache": true
-    },
-    "python.testing.pytestArgs": [
-        "tests"
-    ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true,
+    "debug.allowBreakpointsEverywhere": true,
+    "rust-analyzer.linkedProjects": [
+        "./Cargo.toml",
+        "./Cargo.toml",
+        "./Cargo.toml",
+        "./Cargo.toml",
+        "./Cargo.toml",
+        "./Cargo.toml"
+    ]
 }
