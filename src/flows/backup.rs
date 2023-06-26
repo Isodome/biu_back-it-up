@@ -6,13 +6,12 @@ use std::time::SystemTime;
 
 // derive[Debug]
 pub struct BackupOptions {
-    snapshot_date_pattern: String,
-    source_paths: &[Path],
-    backup_path: Path,
-    archive_mode: bool,
+    pub source_paths: Vec<PathBuf>,
+    pub backup_path: PathBuf,
+    pub archive_mode: bool,
 }
 
-fn make_backup_path(path: &Path) -> Path {
+fn make_backup_path(path: &Path) -> PathBuf {
     let now = SystemTime::now();
     let mut new_path = PathBuf::from(path);
     new_path.push(now.format("%Y-%m-%d_%H-%M").to_string());

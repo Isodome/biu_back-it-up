@@ -1,1 +1,3 @@
-pub mod backup;
+ mod backup;
+
+pub use backup::*;

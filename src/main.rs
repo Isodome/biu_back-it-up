@@ -1,24 +1,28 @@
-// mod flows;
-// mod repo;
+mod flows;
+mod repo;
 mod retention_plan;
-use clap::{Args, Parser, Subcommand};
+mod runner;
 
+use retention_plan::RetentionPlan;
+use runner::Runner;
+use std::path::PathBuf;
+
+use clap::{Args, Parser, Subcommand};
 
 // ---------- Shared Arguments -----------
 #[derive(Args)]
 struct ArgBackupPath {
     /// The path of a directory of the backups.
     #[arg(short, long)]
-    backup_path: String,
+    backup_path: PathBuf,
 }
 
 #[derive(Args)]
 struct ArgRetentionPlan {
     /// The path of a directory of the backups.
     #[arg(short, long)]
-    backup_path: String,
+    retention_plan: RetentionPlan,
 }
-
 
 // ---------- CLI-----------
 #[derive(Parser)]
@@ -35,44 +39,59 @@ enum Commands {
     // Deletes old backups based on the retention plan.
     Cleanup(CleanupArgs),
     // Verfies that the backups are intact.
-    Verify(ScrubCommands),
+    Verify(ScrubArgs),
 }
 
 #[derive(Args)]
 struct BackupArgs {
-    
     #[command(flatten)]
     backup_path: ArgBackupPath,
 
+    /// By default the backup fails if the backup_path does not exist. If set the backup_path is created if missing.
     #[arg(long, default_value_t = false)]
     initialize: bool,
 
     #[command(flatten)]
-    retention_plan: ArgRetentinonPlan,
+    retention_plan: ArgRetentionPlan,
 
+    /// A list of paths to the directories that we'll back up.
+    #[arg(long, short)]
+    source_paths: Vec<PathBuf>,
 }
 
 #[derive(Args)]
 struct CleanupArgs {
-    #[arg(short, long)]
-    backup_path: String,
+    #[command(flatten)]
+    backup_path: ArgBackupPath,
 
-    /// Specifies a minimum number of backups to delete. 
-    #[arg(short, long, default_value_t=0)]
-    force_delete: u64
+    #[command(flatten)]
+    retention_plan: ArgRetentionPlan,
 
-
+    /// Specifies a minimum number of backups to delete.
+    #[arg(short, long, default_value_t = 0)]
+    force_delete: u64,
 }
 
 #[derive(Args)]
-struct ScrubCommands {
-    #[arg(short, long)]
-    backup_path: String,
+struct ScrubArgs {
+    #[command(flatten)]
+    backup_path: ArgBackupPath,
 }
 
 fn main() {
     let cli = Cli::parse();
-    //     match &cli.command {
-    //         Commands::Backup(args) =>
-    //     }
+
+    let runner = Runner {};
+
+    match &cli.command {
+        Commands::Backup(args) => {
+            let backup_opts = flows::BackupOptions {
+                source_paths: args.source_paths,
+                backup_path: args.backup_path.backup_path,
+                archive_mode: false,
+            };
+            flows::run_backup_flow(&backup_opts, &runner);
+        }
+        _ => panic!("Unkown command"),
+    }
 }

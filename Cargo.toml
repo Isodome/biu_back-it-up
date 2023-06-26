@@ -10,4 +10,5 @@ authors = ["Dominic"]
 
 [dependencies]
 clap = { version = "4.2.8", features = ["derive"] }
+regex = "1.8.4"
 
