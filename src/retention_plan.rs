@@ -44,7 +44,6 @@ fn parse_period(s: &str) -> Result<Period, String> {
 impl FromStr for RetentionPlan {
     type Err = String;
 
-    let runner = Runner{}
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let periods : Result<Vec<Period>, String> = s.split(',').map(|s| parse_period(s)).collect();
         Ok(RetentionPlan { periods: periods? })
