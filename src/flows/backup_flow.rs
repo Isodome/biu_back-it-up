@@ -15,17 +15,10 @@ pub struct BackupOptions<'a> {
 #[derive(Debug)]
 enum BackupFlowErr {}
 
-pub fn run_backup_flow(
-    repo: &Repo,
-    opts: &BackupOptions,
-    runner: &Runner,
-) -> Result<(), io::Error> {
+pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Result<(), String> {
     let target_backup = Backup::new_backup_now(&repo.path());
     if target_backup.path().is_dir() {
-        return Err(io::Error::new(
-            io::ErrorKind::AlreadyExists,
-            "Backup path already exists",
-        ));
+        return Err(String::from("Backup path already exists"));
     }
 
     let mut rsync_flags = vec![
@@ -68,5 +61,10 @@ pub fn run_backup_flow(
     } else {
         runner.make_dir(target_backup.path())?;
     }
-    runner.rsync(&rsync_flags, opts.source_paths, target_backup.path())
+    runner.rsync(
+        &rsync_flags,
+        opts.source_paths,
+        target_backup.path(),
+        &target_backup.backup_log_path(),
+    )
 }

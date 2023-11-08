@@ -11,6 +11,9 @@ impl Backup {
     pub fn path(&self) -> &Path {
         return self.path.as_path();
     }
+    pub fn backup_log_path(&self) -> PathBuf {
+        return self.path.join("backup.log");
+    }
 
     pub fn from_existing<P: Into<PathBuf>>(path: P) -> Option<Self> {
         let pathbuf: PathBuf = path.into();

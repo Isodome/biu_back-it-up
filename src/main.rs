@@ -95,7 +95,13 @@ fn main() {
                 Repo::initialize(&backup_opts.backup_path)
                     .expect("Unable to initialize backup path.")
             } else {
-                Repo::existing(&backup_opts.backup_path).expect("Unable to find backup path.")
+                match Repo::existing(&backup_opts.backup_path) {
+                    Ok(e) => e,
+                    Err(_) => {
+                        println!("The provided backup path does not exist. Please use --initialize to create it.");
+                        std::process::exit(1);
+                    }
+                }
             };
 
             flows::run_backup_flow(&repo, &backup_opts, &runner).expect("Backup failed:");
