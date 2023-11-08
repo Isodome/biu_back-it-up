@@ -9,12 +9,21 @@ pub struct Repo {
     backups: Vec<Backup>,
 }
 
+#[derive(Debug)]
 pub enum OpenRepoError {
     RepoNotInitializedError,
     IoError(io::Error),
 }
 
 impl Repo {
+    pub fn path(&self) -> &Path {
+        return self.path.as_path();
+    }
+
+    pub fn backups(&self) -> &[Backup] {
+        return &self.backups;
+    }
+
     pub fn initialize(path: &Path) -> io::Result<Repo> {
         if path.exists() {
             return Err(io::Error::from(io::ErrorKind::AlreadyExists));
@@ -26,11 +35,11 @@ impl Repo {
         })
     }
 
-    pub fn existing(path: PathBuf) -> Result<Repo, OpenRepoError> {
+    pub fn existing(path: &Path) -> Result<Repo, OpenRepoError> {
         if !path.is_dir() {
             return Err(OpenRepoError::RepoNotInitializedError);
         }
-        let backups = list_dirs(path.as_path())?
+        let backups = list_dirs(path)?
             .iter()
             .map(Backup::from_existing)
             .filter(Option::is_some)

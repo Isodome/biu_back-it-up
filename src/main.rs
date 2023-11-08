@@ -3,6 +3,7 @@ mod repo;
 mod retention_plan;
 mod runner;
 
+use repo::Repo;
 use retention_plan::RetentionPlan;
 use runner::Runner;
 use std::path::PathBuf;
@@ -20,7 +21,7 @@ struct ArgBackupPath {
 #[derive(Args)]
 struct ArgRetentionPlan {
     /// The path of a directory of the backups.
-    #[arg(short, long)]
+    #[arg(short, long,default_value_t = RetentionPlan::default()) ]
     retention_plan: RetentionPlan,
 }
 
@@ -55,7 +56,7 @@ struct BackupArgs {
     retention_plan: ArgRetentionPlan,
 
     /// A list of paths to the directories that we'll back up.
-    #[arg(long, short)]
+    #[arg(long, short, required = true)]
     source_paths: Vec<PathBuf>,
 }
 
@@ -86,11 +87,18 @@ fn main() {
     match &cli.command {
         Commands::Backup(args) => {
             let backup_opts = flows::BackupOptions {
-                source_paths: args.source_paths,
-                backup_path: args.backup_path.backup_path,
+                source_paths: &args.source_paths,
+                backup_path: &args.backup_path.backup_path,
                 archive_mode: false,
             };
-            flows::run_backup_flow(&backup_opts, &runner);
+            let repo = if args.initialize {
+                Repo::initialize(&backup_opts.backup_path)
+                    .expect("Unable to initialize backup path.")
+            } else {
+                Repo::existing(&backup_opts.backup_path).expect("Unable to find backup path.")
+            };
+
+            flows::run_backup_flow(&repo, &backup_opts, &runner).expect("Backup failed:");
         }
         _ => panic!("Unkown command"),
     }

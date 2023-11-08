@@ -1,5 +1,5 @@
-mod backups;
+mod backup;
 mod repo;
 
-pub use backups::*;
+pub use backup::*;
 pub use repo::*;
