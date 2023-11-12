@@ -8,6 +8,14 @@ use std::{
 pub struct Runner {}
 
 impl Runner {
+    pub fn sed(&self, flags: &[&str]) -> Result<(), String> {
+        Command::new("sed")
+            .args(flags)
+            .status()
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+
     pub fn remove(&self, path: &Path) -> Result<(), io::Error> {
         return std::fs::remove_file(path);
     }

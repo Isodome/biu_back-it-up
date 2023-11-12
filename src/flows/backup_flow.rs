@@ -33,7 +33,7 @@ pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Re
         // * %C: The checksum
         // * $M: The mtime of the file
         // * %n: the name/path of the file.
-        "--out-format='o;%C;%M;%n'",
+        "--out-format=%o;%C;%M;%n",
         // The default algorithm outputs 128 bits. We"re happy usin xxh3"s 64 bits.
         "--checksum-choice=xxh3",
     ];
@@ -61,10 +61,24 @@ pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Re
     } else {
         runner.make_dir(target_backup.path())?;
     }
+
+    let backup_log_path = target_backup.backup_log_path();
     runner.rsync(
         &rsync_flags,
         opts.source_paths,
         target_backup.path(),
-        &target_backup.backup_log_path(),
-    )
+        &backup_log_path,
+    )?;
+
+    // Modify the backup log a bit to save storage space (we don't want to zip)
+    runner.sed(&vec![
+        "-i",
+        "-e",
+        r"/\/$/d", // Delete lines ending in / (=folders)
+        "-e",
+        r"s/^send/+/", // Replace send with +
+        "-e",
+        r"s/^del./-/", // Replace del. with -
+        backup_log_path.to_str().expect("Invalid path"),
+    ])
 }
