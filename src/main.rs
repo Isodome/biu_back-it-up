@@ -6,7 +6,7 @@ mod runner;
 use repo::Repo;
 use retention_plan::RetentionPlan;
 use runner::Runner;
-use std::path::PathBuf;
+use std::{path::PathBuf, process};
 
 use clap::{Args, Parser, Subcommand};
 
@@ -79,7 +79,7 @@ struct ScrubArgs {
     backup_path: ArgBackupPath,
 }
 
-fn main() {
+fn run() -> Result<(), String> {
     let cli = Cli::parse();
 
     let runner = Runner {};
@@ -91,21 +91,18 @@ fn main() {
                 backup_path: &args.backup_path.backup_path,
                 archive_mode: false,
             };
-            let repo = if args.initialize {
-                Repo::initialize(&backup_opts.backup_path)
-                    .expect("Unable to initialize backup path.")
-            } else {
-                match Repo::existing(&backup_opts.backup_path) {
-                    Ok(e) => e,
-                    Err(_) => {
-                        println!("The provided backup path does not exist. Please use --initialize to create it.");
-                        std::process::exit(1);
-                    }
-                }
-            };
+            let repo = Repo::from(&backup_opts.backup_path, args.initialize)?;
 
-            flows::run_backup_flow(&repo, &backup_opts, &runner).expect("Backup failed:");
+            return flows::run_backup_flow(&repo, &backup_opts, &runner);
         }
         _ => panic!("Unkown command"),
+    }
+}
+
+fn main() {
+    let status = run();
+    if status.is_err() {
+        println!("{}", status.unwrap_err());
+        process::exit(1);
     }
 }

@@ -24,22 +24,35 @@ impl Repo {
         return &self.backups;
     }
 
-    pub fn initialize(path: &Path) -> io::Result<Repo> {
-        if path.exists() {
-            return Err(io::Error::from(io::ErrorKind::AlreadyExists));
+    pub fn from(path: &Path, initialize: bool) -> Result<Self, String> {
+        if initialize {
+            Repo::initialize(path)
+        } else {
+            Repo::existing(path)
         }
-        fs::create_dir_all(path)?;
+    }
+
+    pub fn initialize(path: &Path) -> Result<Self, String> {
+        if path.exists() {
+            return Err(
+                "Unable to initialize a repository at {path}. The directory does already exist."
+                    .into(),
+            );
+        }
+        fs::create_dir_all(path)
+            .map_err(|e| "Unable to create a directory at {path}. :{e.description}")?;
         Ok(Repo {
             path: PathBuf::from(path),
             backups: Vec::new(),
         })
     }
 
-    pub fn existing(path: &Path) -> Result<Repo, OpenRepoError> {
+    pub fn existing(path: &Path) -> Result<Repo, String> {
         if !path.is_dir() {
-            return Err(OpenRepoError::RepoNotInitializedError);
+            return Err("The provided backup {path} path does not exist. Please provide a valid path or use --initialize to create a new directory.".into());
         }
-        let backups = list_dirs(path)?
+        let backups = list_dirs(path)
+            .map_err(|e| "Unable to list backups at {path}. :{e.description}")?
             .iter()
             .map(Backup::from_existing)
             .filter(Option::is_some)
