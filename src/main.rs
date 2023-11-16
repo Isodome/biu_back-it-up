@@ -70,7 +70,7 @@ struct CleanupArgs {
 
     /// Specifies a minimum number of backups to delete.
     #[arg(short, long, default_value_t = 0)]
-    force_delete: u64,
+    force_delete: i32,
 }
 
 #[derive(Args)]
@@ -94,6 +94,16 @@ fn run() -> Result<(), String> {
             let repo = Repo::from(&backup_opts.backup_path, args.initialize)?;
 
             return flows::run_backup_flow(&repo, &backup_opts, &runner);
+        }
+        Commands::Cleanup(args) => {
+            let cleanup_opts = flows::CleanupOptions {
+                backup_path: &args.backup_path.backup_path,
+                retention_plan: &args.retention_plan.retention_plan,
+                force_delete: args.force_delete,
+            };
+            let repo = Repo::existing(&cleanup_opts.backup_path)?;
+
+            return flows::run_cleanup_flow(repo, cleanup_opts, &runner);
         }
         _ => panic!("Unkown command"),
     }

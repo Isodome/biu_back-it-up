@@ -1,36 +1,26 @@
+use chrono::Duration;
 use regex::Regex;
 use std::{fmt, str::FromStr};
 
-#[derive(Clone, Debug)]
-pub enum Duration {
-    Hours(i32),
-    Days(i32),
-    Weeks(i32),
-    Months(i32),
-}
-
-impl fmt::Display for Duration {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            Duration::Hours(hours) => write!(f, "{hours}h"),
-            Duration::Days(days) => write!(f, "{days}d"),
-            Duration::Weeks(weeks) => write!(f, "{weeks}w"),
-            Duration::Months(months) => write!(f, "{months}m"),
-        }
-    }
-}
+// #[derive(Clone, Debug)]
+// pub enum Duration {
+//     Hours(i32),
+//     Days(i32),
+//     Weeks(i32),
+//     Months(i32),
+// }
 
 #[derive(Clone, Debug)]
 pub struct RetentionPlan {
-    periods: Vec<Period>,
+    pub periods: Vec<Period>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Period {
     // How man backups to keep with this interval.
-    instances: i32,
+    pub instances: i32,
     // The duration.
-    interval: Duration,
+    pub interval: Duration,
 }
 
 impl RetentionPlan {
@@ -49,16 +39,15 @@ impl FromStr for Period {
         let instances: i32 = captures[1]
             .parse()
             .map_err(|_e| "Invalid period string: {captures[1]}")?;
-        let multiplier: i32 = captures[2]
+        let multiplier: i64 = captures[2]
             .parse()
             .map_err(|_e| "Invalid period string: {captures[2]}")?;
         let unit = &captures[3];
 
         let interval = match unit {
-            "d" => Duration::Days(multiplier),
-            "h" => Duration::Hours(multiplier),
-            "w" => Duration::Weeks(multiplier),
-            "m" => Duration::Months(multiplier),
+            "d" => Duration::days(multiplier),
+            "h" => Duration::hours(multiplier),
+            "w" => Duration::weeks(multiplier),
             _ => return Err(String::from("Invalid period string: {unit}")),
         };
         return Ok(Period {

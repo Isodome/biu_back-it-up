@@ -1,7 +1,6 @@
 use crate::repo::Backup;
 use crate::repo::Repo;
 use crate::Runner;
-use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 

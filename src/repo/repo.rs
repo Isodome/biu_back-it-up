@@ -16,6 +16,10 @@ pub enum OpenRepoError {
 }
 
 impl Repo {
+    pub fn num_backups(&self) -> i32 {
+        return self.backups.len() as i32;
+    }
+
     pub fn path(&self) -> &Path {
         return self.path.as_path();
     }
@@ -39,8 +43,13 @@ impl Repo {
                     .into(),
             );
         }
-        fs::create_dir_all(path)
-            .map_err(|e| "Unable to create a directory at {path}. :{e.description}")?;
+        fs::create_dir_all(path).map_err(|e| {
+            format!(
+                "Unable to create a directory at {:?}. :{}",
+                path,
+                e.to_string()
+            )
+        })?;
         Ok(Repo {
             path: PathBuf::from(path),
             backups: Vec::new(),
@@ -52,7 +61,7 @@ impl Repo {
             return Err("The provided backup {path} path does not exist. Please provide a valid path or use --initialize to create a new directory.".into());
         }
         let backups = list_dirs(path)
-            .map_err(|e| "Unable to list backups at {path}. :{e.description}")?
+            .map_err(|e| format!("Unable to list backups at {:?}. :{:?}", path, e))?
             .iter()
             .map(Backup::from_existing)
             .filter(Option::is_some)

@@ -1,10 +1,10 @@
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, TimeZone};
 use std::path::{Path, PathBuf};
 
 #[derive(Debug)]
 pub struct Backup {
     pub path: PathBuf,
-    time: chrono::NaiveDateTime,
+    creation_time: DateTime<chrono::Local>,
 }
 
 impl Backup {
@@ -25,17 +25,21 @@ impl Backup {
 
         return Some(Backup {
             path: pathbuf,
-            time: time_from_dir,
+            creation_time: chrono::Local.from_local_datetime(&time_from_dir).unwrap(),
         });
     }
 
     pub fn new_backup_now(repo_path: &Path) -> Self {
-        let now = chrono::Local::now().naive_local();
+        let now = chrono::Local::now();
         let mut new_path = PathBuf::from(repo_path);
         new_path.push(now.format("%Y-%m-%d_%H-%M").to_string());
         Self {
             path: new_path,
-            time: now,
+            creation_time: now,
         }
+    }
+    
+    pub fn creation_time(&self) -> DateTime<chrono::Local> {
+        return self.creation_time;
     }
 }

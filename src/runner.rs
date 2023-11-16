@@ -54,4 +54,22 @@ impl Runner {
             false => Err("Rsync terminated with status {status.exit_code()}".to_owned()),
         }
     }
+
+    pub(crate) fn commentln(&self, arg: &str) {
+        println!("{arg}");
+    }
+
+    pub(crate) fn remove_path(&self, path: &Path) -> Result<(), String> {
+        println!("rm {:?}", path);
+        Ok(())
+        // let status = Command::new("rm")
+        //     .arg("-rf")
+        //     .arg(path)
+        //     .status()
+        //     .map_err(|err| err.to_string())?;
+        // match status.success() {
+        //     true => Ok(()),
+        //     false => Err("Unable to delete path {path}}".into()),
+        // }
+    }
 }
