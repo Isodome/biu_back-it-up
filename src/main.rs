@@ -82,7 +82,7 @@ struct ScrubArgs {
 fn run() -> Result<(), String> {
     let cli = Cli::parse();
 
-    let runner = Runner {};
+    let runner = Runner { verbose: true };
 
     match &cli.command {
         Commands::Backup(args) => {

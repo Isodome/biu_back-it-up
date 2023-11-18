@@ -17,7 +17,11 @@ struct MarkedBackup<'a> {
     should_keep: bool,
 }
 
-fn determine_backups_to_keep(opts: CleanupOptions, backups: &mut Vec<MarkedBackup>) {
+fn determine_backups_to_keep(
+    opts: CleanupOptions,
+    backups: &mut Vec<MarkedBackup>,
+    runner: &Runner,
+) {
     let now = Local::now();
     // The number of backups we are allowed to keep. We can keep all of them if --force_delete is 0.
     let num_backups = backups.len() as i32;
@@ -45,8 +49,15 @@ fn determine_backups_to_keep(opts: CleanupOptions, backups: &mut Vec<MarkedBacku
 
         for backup in &mut *backups {
             if timestamp < backup.backup.creation_time() {
+                runner.verbose(format!(
+                    "Keeping {:?} for desired timestamp {}",
+                    backup.backup.path(),
+                    timestamp.format("%Y-%m-%dT%H:%M:%S")
+                ));
+                if !backup.should_keep {
+                    num_saved_backups += 1;
+                }
                 backup.should_keep = true;
-                num_saved_backups += 1;
                 break;
             }
         }
@@ -54,7 +65,6 @@ fn determine_backups_to_keep(opts: CleanupOptions, backups: &mut Vec<MarkedBacku
 }
 
 pub fn run_cleanup_flow(repo: Repo, opts: CleanupOptions, runner: &Runner) -> Result<(), String> {
-    println!("{:?}", opts);
     if repo.num_backups() < 2 {
         runner.commentln("Less than 2 backups were found. We can't cleanup anything.");
         return Ok(());
@@ -69,11 +79,20 @@ pub fn run_cleanup_flow(repo: Repo, opts: CleanupOptions, runner: &Runner) -> Re
         })
         .collect();
 
-    determine_backups_to_keep(opts, &mut backups);
+    determine_backups_to_keep(opts, &mut backups, runner);
 
     for backup in backups {
-        if !backup.should_keep {
-            runner.remove_path(backup.backup.path());
+        if backup.should_keep {
+            runner.verbose(format!("Keep {:?}", backup.backup.path()));
+            continue;
+        }
+        let result = runner.remove_path(backup.backup.path());
+        if let Err(v) = result {
+            runner.commentln(format!(
+                "Error removing backup at path {:?}: {}",
+                backup.backup.path(),
+                v
+            ));
         }
     }
     Ok(())

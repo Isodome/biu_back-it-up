@@ -1,13 +1,20 @@
 use std::{
     fs::File,
-    io,
     path::{Path, PathBuf},
     process::Command,
 };
 
-pub struct Runner {}
+pub struct Runner {
+    pub verbose: bool,
+}
 
 impl Runner {
+    pub fn verbose<S: AsRef<str>>(&self, s: S) {
+        if self.verbose {
+            self.commentln(s);
+        }
+    }
+
     pub fn sed(&self, flags: &[&str]) -> Result<(), String> {
         Command::new("sed")
             .args(flags)
@@ -16,8 +23,8 @@ impl Runner {
         Ok(())
     }
 
-    pub fn remove(&self, path: &Path) -> Result<(), io::Error> {
-        return std::fs::remove_file(path);
+    pub fn remove_file(&self, path: &Path) -> Result<(), String> {
+        return std::fs::remove_file(path).map_err(|err| err.to_string());
     }
 
     pub fn copy_as_hardlinks(&self, source: &Path, dest: &Path) -> Result<(), String> {
@@ -55,11 +62,11 @@ impl Runner {
         }
     }
 
-    pub(crate) fn commentln(&self, arg: &str) {
-        println!("{arg}");
+    pub fn commentln<S: AsRef<str>>(&self, arg: S) {
+        println!("{}", arg.as_ref());
     }
 
-    pub(crate) fn remove_path(&self, path: &Path) -> Result<(), String> {
+    pub fn remove_path(&self, path: &Path) -> Result<(), String> {
         println!("rm {:?}", path);
         Ok(())
         // let status = Command::new("rm")

@@ -56,7 +56,7 @@ pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Re
     }
     if let Some(last_backup) = repo.backups().last() {
         runner.copy_as_hardlinks(&last_backup.path(), target_backup.path())?;
-        // runner.remove(target_backup.path.as_path())?;
+        runner.remove_file(target_backup.path.as_path())?;
     } else {
         runner.make_dir(target_backup.path())?;
     }
