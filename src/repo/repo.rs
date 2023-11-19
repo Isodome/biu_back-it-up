@@ -73,6 +73,10 @@ impl Repo {
             backups,
         })
     }
+
+    pub fn has_no_backups(&self) -> bool {
+        return self.num_backups() == 0;
+    }
 }
 
 fn list_dirs(path: &Path) -> Result<Vec<PathBuf>, OpenRepoError> {

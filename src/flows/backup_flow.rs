@@ -4,7 +4,7 @@ use crate::Runner;
 use std::path::Path;
 use std::path::PathBuf;
 
-// derive[Debug]
+#[derive()]
 pub struct BackupOptions<'a> {
     pub source_paths: &'a [PathBuf],
     pub backup_path: &'a Path,
