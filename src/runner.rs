@@ -79,4 +79,14 @@ impl Runner {
         //     false => Err("Unable to delete path {path}}".into()),
         // }
     }
+
+    pub fn sort(&self, path: &Path) -> Result<(), String> {
+        Command::new("sort")
+            .arg(path)
+            .arg("-o")
+            .arg(path)
+            .status()
+            .map_err(|err| "Runner::sort:".to_owned() + &err.to_string())?;
+        Ok(())
+    }
 }

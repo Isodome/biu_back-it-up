@@ -11,8 +11,6 @@ pub struct BackupOptions<'a> {
     pub archive_mode: bool,
 }
 
-#[derive(Debug)]
-enum BackupFlowErr {}
 
 pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Result<(), String> {
     let target_backup = Backup::new_backup_now(&repo.path());
@@ -54,14 +52,15 @@ pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Re
             "--xattrs",
         ]);
     }
+
+    let backup_log_path = target_backup.backup_log_path();
     if let Some(last_backup) = repo.backups().last() {
         runner.copy_as_hardlinks(&last_backup.path(), target_backup.path())?;
-        runner.remove_file(target_backup.path.as_path())?;
+        runner.remove_file(&backup_log_path)?;
     } else {
         runner.make_dir(target_backup.path())?;
     }
 
-    let backup_log_path = target_backup.backup_log_path();
     runner.rsync(
         &rsync_flags,
         opts.source_paths,
@@ -75,9 +74,12 @@ pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Re
         "-e",
         r"/\/$/d", // Delete lines ending in / (=folders)
         "-e",
-        r"s/^send/+/", // Replace send with +
+        r"s/^send/+/", // Replace "send" with +
         "-e",
-        r"s/^del./-/", // Replace del. with -
+        r"s/^del./-/", // Replace "del."" with -
         backup_log_path.to_str().expect("Invalid path"),
-    ])
+    ])?;
+
+    // Sort the backup log in place such that it's sorted by the base64 hashes.
+    runner.sort(&backup_log_path)
 }
