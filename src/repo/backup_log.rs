@@ -10,18 +10,18 @@ pub struct BackupLog {
     pub file: File,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct WriteData {
     pub path: String,
     pub xxh3: String,
     pub mtime: String,
 }
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct DeleteData {
     pub path: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LogEntry {
     Unparseable(String),
     Write(WriteData),
@@ -61,8 +61,62 @@ mod test {
     use super::*;
 
     #[test]
-    fn unparseable() {
-        let parsed = parse_row("-;;;;my/path".to_owned());
-        assert_eq!(parsed, LogEntry::Unparseable{});
+    fn unparseable_missing_simicolon() {
+        assert_eq!(
+            parse_row("-;;my/path".to_owned()),
+            LogEntry::Unparseable {
+                0: "-;;my/path".to_owned()
+            }
+        );
+        assert_eq!(
+            parse_row("-;;my/path".to_owned()),
+            LogEntry::Unparseable {
+                0: "-;;my/path".to_owned()
+            }
+        );
+        assert_eq!(
+            parse_row("-;;my/path".to_owned()),
+            LogEntry::Unparseable {
+                0: "-;;my/path".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn parseable_lines() {
+        assert_eq!(
+            parse_row("+;0394b8fafef76701;2020/07/19-12:24:58;Downloads/1.mp3".to_owned()),
+            LogEntry::Write(WriteData {
+                xxh3: "0394b8fafef76701".to_owned(),
+                mtime: "2020/07/19-12:24:58".to_owned(),
+                path: "Downloads/1.mp3".to_owned(),
+            })
+        );
+
+        assert_eq!(
+            parse_row("-;;;Downloads/1.mp3".to_owned()),
+            LogEntry::Delete(DeleteData {
+                path: "Downloads/1.mp3".to_owned(),
+            })
+        );
+    }
+    
+    #[test]
+    fn semicolon_in_path() {
+        assert_eq!(
+            parse_row("+;0394b8fafef76701;2020/07/19-12:24:58;Downloads;1.mp3".to_owned()),
+            LogEntry::Write(WriteData {
+                xxh3: "0394b8fafef76701".to_owned(),
+                mtime: "2020/07/19-12:24:58".to_owned(),
+                path: "Downloads;1.mp3".to_owned(),
+            })
+        );
+
+        assert_eq!(
+            parse_row("-;;;Downloads;1.mp3".to_owned()),
+            LogEntry::Delete(DeleteData {
+                path: "Downloads;1.mp3".to_owned(),
+            })
+        );
     }
 }
