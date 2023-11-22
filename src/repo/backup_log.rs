@@ -1,14 +1,8 @@
 use std::{
     fs::File,
-    io,
+    io::{self, BufRead, BufReader, Lines},
     path::{Path, PathBuf},
 };
-
-#[derive(Debug)]
-pub struct BackupLog {
-    pub path: PathBuf,
-    pub file: File,
-}
 
 #[derive(Debug, PartialEq)]
 pub struct WriteData {
@@ -47,12 +41,41 @@ pub fn parse_row(row: String) -> LogEntry {
     return LogEntry::Unparseable(row);
 }
 
+#[derive(Debug)]
+pub struct BackupLog {
+    pub path: PathBuf,
+}
+
 impl BackupLog {
-    pub fn create(&self, path: &Path) -> io::Result<BackupLog> {
-        return Ok(BackupLog {
+    pub fn create(path: &Path) -> BackupLog {
+        return BackupLog {
             path: path.to_path_buf(),
-            file: File::create(path)?,
+        };
+    }
+    pub fn iter(&self) -> Result<BackupLogIterator, String> {
+        let file = File::open(&self.path)
+            .map_err(|e| format!("Failed to open backup log: {}", e.to_string()))?;
+
+        return Ok(BackupLogIterator {
+            lines: BufReader::new(file).lines(),
         });
+    }
+}
+
+pub struct BackupLogIterator {
+    lines: Lines<BufReader<File>>,
+}
+
+impl Iterator for BackupLogIterator {
+    type Item = Result<LogEntry, String>;
+    fn next(&mut self) -> Option<Self::Item> {
+        return match self.lines.next()? {
+            Err(e) => Some(Err(format!(
+                "FATAL: Failed to read backup log: {}",
+                e.to_string()
+            ))),
+            Ok(text) => Some(Ok(parse_row(text))),
+        };
     }
 }
 
@@ -100,7 +123,7 @@ mod test {
             })
         );
     }
-    
+
     #[test]
     fn semicolon_in_path() {
         assert_eq!(

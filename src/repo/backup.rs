@@ -1,6 +1,8 @@
 use chrono::{DateTime, NaiveDateTime, TimeZone};
 use std::path::{Path, PathBuf};
 
+use super::BackupLog;
+
 #[derive(Debug)]
 pub struct Backup {
     pub path: PathBuf,
@@ -11,8 +13,11 @@ impl Backup {
     pub fn path(&self) -> &Path {
         return self.path.as_path();
     }
-    pub fn backup_log_path(&self) -> PathBuf {
-        return self.path.join("backup.log");
+    pub fn log(&self) -> BackupLog {
+        return BackupLog::create(&self.path.join("backup.log"));
+    }
+    pub fn abs_path(&self, relative: &str) -> PathBuf {
+        return self.path.join(relative).as;
     }
 
     pub fn from_existing<P: Into<PathBuf>>(path: P) -> Option<Self> {
@@ -38,7 +43,7 @@ impl Backup {
             creation_time: now,
         }
     }
-    
+
     pub fn creation_time(&self) -> DateTime<chrono::Local> {
         return self.creation_time;
     }

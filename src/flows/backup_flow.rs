@@ -53,7 +53,7 @@ pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Re
         ]);
     }
 
-    let backup_log_path = target_backup.backup_log_path();
+    let backup_log_path = target_backup.log().path;
     if let Some(last_backup) = repo.backups().last() {
         runner.copy_as_hardlinks(&last_backup.path(), target_backup.path())?;
         runner.remove_file(&backup_log_path)?;

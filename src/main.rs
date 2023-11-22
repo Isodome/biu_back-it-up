@@ -3,6 +3,7 @@ mod repo;
 mod retention_plan;
 mod runner;
 
+use flows::DeduplicationOptions;
 use repo::Repo;
 use retention_plan::RetentionPlan;
 use runner::Runner;
@@ -93,7 +94,15 @@ fn run() -> Result<(), String> {
             };
             let repo = Repo::from(&backup_opts.backup_path, args.initialize)?;
 
-            return flows::run_backup_flow(&repo, &backup_opts, &runner);
+            flows::run_backup_flow(&repo, &backup_opts, &runner)?;
+            return flows::run_deduplication_flow(
+                &Repo::existing(&backup_opts.backup_path)?,
+                &DeduplicationOptions {
+                    deep_compare: true,
+                    preserve_mtime: false,
+                },
+                &runner,
+            );
         }
         Commands::Cleanup(args) => {
             let cleanup_opts = flows::CleanupOptions {
