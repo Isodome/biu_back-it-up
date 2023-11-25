@@ -33,8 +33,8 @@ pub fn run_deduplication_flow(
                 if duplicate_candidates.is_empty() || data.xxh3 == duplicate_candidates[0].xxh3{
                     duplicate_candidates.push(data);
                 } else {
-                    let paths = duplicate_candidates.iter().map(|d| &backups[0].abs_path(&d.path)).collect();
-                   let status =  maybe_dedup_files(paths, opts);
+                    let absolute_paths = duplicate_candidates.iter().map(|d| backups[0].abs_path(&d.path)).collect::<Vec<PathBuf>>();
+                   let status =  maybe_dedup_files(absolute_paths, opts);
                     if let Err(e) = status {
                         runner.commentln(format!(
                             "Failure while trying to eliminate duplicates: {:?}: {}",
@@ -49,7 +49,7 @@ pub fn run_deduplication_flow(
         }
     }
 
-    let paths = duplicate_candidates.iter().map(|d| &backups[0].abs_path(&d.path)).collect();
+    let paths = duplicate_candidates.iter().map(|d| backups[0].abs_path(&d.path)).collect::<Vec<PathBuf>>();
     let status =  maybe_dedup_files(paths, opts);
      if let Err(e) = status {
          runner.commentln(format!(
@@ -74,36 +74,41 @@ fn replace_file_with_link(original: &Path, duplicate: &Path) {
      i += 1;
   }
   std::fs::hard_link(&original, &tmp_file_name).expect(format!("Failed to create hard link to replace {}", duplicate.to_string_lossy()).as_str());
-  if let Err(e) = 
-  std::fs::rename(&tmp_file_name, &duplicate) {
+  if let Err(_e) =   std::fs::rename(&tmp_file_name, &duplicate) {
     // If the renaming fails we delete the hardlink created above.
     let _ = std::fs::remove_file(tmp_file_name);
   }
 }
+fn as_path_refs(pathbufs : &Vec<PathBuf> ) -> Vec<&Path> {
+    return pathbufs.iter().map(|pathbuf| pathbuf.as_path()).collect();
+}
+fn maybe_dedup_files (  duplicates:  Vec<PathBuf>, opts : &DeduplicationOptions) -> io::Result<()> {
+    if duplicates.len() < 2 {
+        return Ok(())
+    }
 
-fn maybe_dedup_files ( mut duplicates:  Vec<PathBuf>, opts : &DeduplicationOptions) -> io::Result<()> {
-
-    while duplicates.len( ) > 1 {
-        let true_dups = find_all_real_dups(&duplicates[0], &duplicates[1..], opts)?;
-        for true_dup in true_dups {
-            replace_file_with_link(&duplicates[0], true_dup)
+    let mut duplicate_candidates = as_path_refs(&duplicates);
+    while duplicate_candidates.len( ) > 1 {
+        let true_dups = find_all_real_dups(&duplicate_candidates[0], &duplicate_candidates[1..], opts)?;
+        for true_dup in &true_dups {
+            replace_file_with_link(&duplicate_candidates[0], true_dup)
         }
-        if true_dups.len() == duplicates.len()-1 {
+        if true_dups.len() == duplicate_candidates.len()-1 {
             // In case all dups by hash are true dups (so almost always) we can take this shortcut.
             return Ok(());
         }
-        duplicates.remove(0);
-        duplicates.retain(|path| !true_dups.contains(path.as_ref()));
+        duplicate_candidates.remove(0);
+        duplicate_candidates.retain(|path| !true_dups.contains(&path.as_ref()));
     }
     return Ok(());
 }
 
 
-fn find_all_real_dups<'a>(
-    original: & Path,
-    duplicates: &'a [PathBuf],
+fn find_all_real_dups<'b>(
+    original: &Path,
+    duplicates: & [&'b Path],
     opts: &DeduplicationOptions,
-) -> std::io::Result<Vec<&'a Path>> {
+) -> std::io::Result<Vec<&'b Path>> {
 
     let  mut true_dups = Vec::from(duplicates);
     // let stat_original = std::fs::symlink_metadata(original)?;
@@ -116,30 +121,31 @@ fn find_all_real_dups<'a>(
     //     return Ok(false);
     // }
     if opts.deep_compare  {
-        true_dups =  find_all_dups_by_content(original, &true_dups)?;
+        return find_all_dups_by_content(original, &true_dups);
     }
     return Ok(true_dups);
 }
 
 
 /// 
-fn find_all_dups_by_content<'a>(original: &Path, files: &'a  [PathBuf]) -> std::io::Result<Vec<&'a Path>> {
+fn find_all_dups_by_content<'a>(original: &Path, files: &  [&'a Path]) -> std::io::Result<Vec<&'a Path>> {
     struct FileAndPath<'a> {
         bytes: Bytes<BufReader<File>>,
         path: &'a Path,
     }
     let buffer_orig = BufReader::new(File::open(original)?);
     let mut files  = files.iter()
-    .map(|path|-> io::Result<FileAndPath> {let file =  File::open(path)?;
-let reader =  BufReader::new(file);
-return Ok(FileAndPath{bytes:reader.bytes(), path:path});
-})
+    .map(|path|-> io::Result<FileAndPath> 
+        {let file =  File::open(path)?;
+        let reader =  BufReader::new(file);
+        return Ok(FileAndPath{bytes:reader.bytes(), path:path});
+        })
     .collect::<io::Result<Vec<FileAndPath>>>()?;
 
 
     for original_byte in buffer_orig.bytes() {
         let b = original_byte?;
-            files.retain(|file|{
+            files.retain_mut(|file|{
                 file.bytes.next().expect("Trying to compare files with different lenghts.").expect("Error reading file") == b
             });
     }
