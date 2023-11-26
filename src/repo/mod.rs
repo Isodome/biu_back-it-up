@@ -1,7 +1,7 @@
 mod backup;
-mod repo;
 mod backup_log;
+mod repo;
 
 pub use backup::*;
-pub use repo::*;
 pub use backup_log::*;
+pub use repo::*;

@@ -11,7 +11,6 @@ pub struct BackupOptions<'a> {
     pub archive_mode: bool,
 }
 
-
 pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Result<(), String> {
     let target_backup = Backup::new_backup_now(&repo.path());
     if target_backup.path().is_dir() {
