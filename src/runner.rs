@@ -89,4 +89,33 @@ impl Runner {
             .map_err(|err| "Runner::sort:".to_owned() + &err.to_string())?;
         Ok(())
     }
+
+    pub fn replace_file_with_link(original: &Path, duplicate: &Path) {
+        println!("{:?} and {:?} are dups.", original, duplicate);
+
+        let basedir = duplicate
+            .parent()
+            .expect("We could not determine the basedir of a file.");
+        let file_name = duplicate
+            .file_name()
+            .expect("Unable to deterimne the filename of a file.");
+
+        let mut tmp_file_name = basedir.join(format!("{}.as_link", file_name.to_string_lossy()));
+        let mut i = 0;
+        while tmp_file_name.exists() {
+            tmp_file_name = basedir.join(format!("{}.as_link{i}", file_name.to_string_lossy()));
+            i += 1;
+        }
+        std::fs::hard_link(&original, &tmp_file_name).expect(
+            format!(
+                "Failed to create hard link to replace {}",
+                duplicate.to_string_lossy()
+            )
+            .as_str(),
+        );
+        if let Err(_e) = std::fs::rename(&tmp_file_name, &duplicate) {
+            // If the renaming fails we delete the hardlink created above.
+            let _ = std::fs::remove_file(tmp_file_name);
+        }
+    }
 }

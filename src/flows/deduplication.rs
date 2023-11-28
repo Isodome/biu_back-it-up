@@ -3,7 +3,7 @@ use crate::runner::Runner;
 use std::collections::HashMap;
 use std::fs::{File, Metadata};
 use std::io::{self, BufReader, Bytes, Read};
-// use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 #[derive()]
@@ -34,7 +34,7 @@ pub fn run_deduplication_flow(
                         .iter()
                         .map(|d| backups[0].abs_path(&d.path))
                         .collect::<Vec<PathBuf>>();
-                    let status = maybe_dedup_files(absolute_paths, opts);
+                    let status = maybe_dedup_files(absolute_paths, opts, runner);
                     if let Err(e) = status {
                         runner.commentln(format!(
                             "Failure while trying to eliminate duplicates: {:?}: {}",
@@ -53,7 +53,7 @@ pub fn run_deduplication_flow(
         .iter()
         .map(|d| backups[0].abs_path(&d.path))
         .collect::<Vec<PathBuf>>();
-    let status = maybe_dedup_files(paths, opts);
+    let status = maybe_dedup_files(paths, opts, runner);
     if let Err(e) = status {
         runner.commentln(format!(
             "Failure while trying to eliminate duplicates: {:?}: {}",
@@ -64,38 +64,15 @@ pub fn run_deduplication_flow(
     Ok(())
 }
 
-fn replace_file_with_link(original: &Path, duplicate: &Path) {
-    println!("{:?} and {:?} are dups.", original, duplicate);
-
-    let basedir = duplicate
-        .parent()
-        .expect("We could not determine the basedir of a file.");
-    let file_name = duplicate
-        .file_name()
-        .expect("Unable to deterimne the filename of a file.");
-
-    let mut tmp_file_name = basedir.join(format!("{}.as_link", file_name.to_string_lossy()));
-    let mut i = 0;
-    while tmp_file_name.exists() {
-        tmp_file_name = basedir.join(format!("{}.as_link{i}", file_name.to_string_lossy()));
-        i += 1;
-    }
-    std::fs::hard_link(&original, &tmp_file_name).expect(
-        format!(
-            "Failed to create hard link to replace {}",
-            duplicate.to_string_lossy()
-        )
-        .as_str(),
-    );
-    if let Err(_e) = std::fs::rename(&tmp_file_name, &duplicate) {
-        // If the renaming fails we delete the hardlink created above.
-        let _ = std::fs::remove_file(tmp_file_name);
-    }
-}
 fn as_path_refs(pathbufs: &Vec<PathBuf>) -> Vec<&Path> {
     return pathbufs.iter().map(|pathbuf| pathbuf.as_path()).collect();
 }
-fn maybe_dedup_files(duplicates: Vec<PathBuf>, opts: &DeduplicationOptions) -> io::Result<()> {
+
+fn maybe_dedup_files(
+    duplicates: Vec<PathBuf>,
+    opts: &DeduplicationOptions,
+    runner: &Runner,
+) -> io::Result<()> {
     if duplicates.len() < 2 {
         return Ok(());
     }
@@ -105,7 +82,7 @@ fn maybe_dedup_files(duplicates: Vec<PathBuf>, opts: &DeduplicationOptions) -> i
         let true_dups =
             find_all_real_dups(&duplicate_candidates[0], &duplicate_candidates[1..], opts)?;
         for true_dup in &true_dups {
-            replace_file_with_link(&duplicate_candidates[0], true_dup)
+            runner.replace_file_with_link(&duplicate_candidates[0], true_dup)
         }
         if true_dups.len() == duplicate_candidates.len() - 1 {
             // In case all dups by hash are true dups (so almost always) we can take this shortcut.
@@ -123,15 +100,14 @@ fn find_all_real_dups<'b>(
     opts: &DeduplicationOptions,
 ) -> std::io::Result<Vec<&'b Path>> {
     let mut true_dups = Vec::from(duplicates);
-    // let stat_original = std::fs::symlink_metadata(original)?;
-    // let stat_duplicate = std::fs::symlink_metadata(duplicate)?;
+    let stat_original = std::fs::symlink_metadata(original)?;
 
-    // if stat_original.size() != stat_duplicate.size() {
-    //     return Ok(false);
-    // }
-    // if opts.preserve_mtime && stat_original.mtime() != stat_duplicate.mtime() {
-    //     return Ok(false);
-    // }
+    true_dups.retain(|path| {
+        let stat_duplicate = std::fs::symlink_metadata(path).expect("");
+        return stat_duplicate.size() == stat_duplicate.size()
+            && (!opts.preserve_mtime || stat_original.mtime() != stat_duplicate.mtime());
+    });
+
     if opts.deep_compare {
         return find_all_dups_by_content(original, &true_dups);
     }
