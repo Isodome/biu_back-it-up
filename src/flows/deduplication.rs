@@ -12,6 +12,14 @@ pub struct DeduplicationOptions {
     pub preserve_mtime: bool,
 }
 
+fn log_entry_to_hash(entry: Option<&Result<LogEntry, String>>) -> Option<&str> {
+    let log_entry = entry?.as_ref().ok()?;
+    return match log_entry {
+        LogEntry::Write(data) => Some(data.xxh3),
+        _ => None,
+    };
+}
+
 pub fn run_deduplication_flow(
     repo: &Repo,
     opts: &DeduplicationOptions,
@@ -22,43 +30,39 @@ pub fn run_deduplication_flow(
     }
 
     let backups = repo.backups();
-    let mut duplicate_candidates: Vec<WriteData> = Vec::new();
 
-    for log_entry in backups[0].log().iter()? {
+    let mut batch = FileBatch::new();
+
+    let mut log_entries = backups[0].log().iter()?.peekable();
+    for log_entry in log_entries {
         match log_entry? {
             LogEntry::Write(data) => {
-                if duplicate_candidates.is_empty() || data.xxh3 == duplicate_candidates[0].xxh3 {
-                    duplicate_candidates.push(data);
-                } else {
-                    let absolute_paths = duplicate_candidates
-                        .iter()
-                        .map(|d| backups[0].abs_path(&d.path))
-                        .collect::<Vec<PathBuf>>();
-                    let status = maybe_dedup_files(absolute_paths, opts, runner);
-                    if let Err(e) = status {
-                        runner.commentln(format!(
-                            "Failure while trying to eliminate duplicates: {:?}: {}",
-                            duplicate_candidates, e
-                        ));
-                    }
-                    duplicate_candidates.clear();
-                }
+                batch.hash_to_paths[&data.xxh3].push(data.path);
             }
             LogEntry::Unparseable(_) => todo!(),
             _ => {}
         }
-    }
-
-    let paths = duplicate_candidates
-        .iter()
-        .map(|d| backups[0].abs_path(&d.path))
-        .collect::<Vec<PathBuf>>();
-    let status = maybe_dedup_files(paths, opts, runner);
-    if let Err(e) = status {
-        runner.commentln(format!(
-            "Failure while trying to eliminate duplicates: {:?}: {}",
-            duplicate_candidates, e
-        ));
+        if batch.hash_to_paths.len() > 1000 {
+            if let Some(next_hash) = log_entry_to_hash(log_entries.peek()) {
+                if batch.hash_to_paths.contains_key(&next_hash) {
+                    // The batch is full, however there are more entries with the same hash.
+                    continue;
+                }
+            }
+            for (_, paths) in batch.hash_to_paths.iter() {
+                let absolute_paths = paths
+                    .iter()
+                    .map(|path| backups[0].abs_path(&path))
+                    .collect::<Vec<PathBuf>>();
+                let status = maybe_dedup_files(absolute_paths, opts, runner);
+                if let Err(e) = status {
+                    runner.commentln(format!(
+                        "Failure while trying to eliminate duplicates: {:?}: {}",
+                        paths, e
+                    ));
+                }
+            }
+        }
     }
 
     Ok(())
@@ -153,5 +157,14 @@ fn find_all_dups_by_content<'a>(
 struct FileBatch {
     min_hash: String,
     max_hash: String,
-    hash_to_path: HashMap<String, String>,
+    hash_to_paths: HashMap<String, Vec<String>>,
+}
+impl FileBatch {
+    fn new() -> FileBatch {
+        return FileBatch {
+            min_hash: "////////////////".into(),
+            max_hash: "AAAAAAAAAAAAAAAA".into(),
+            hash_to_paths: HashMap::new(),
+        };
+    }
 }

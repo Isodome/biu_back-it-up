@@ -1,7 +1,7 @@
 use chrono::{DateTime, NaiveDateTime, TimeZone};
 use std::path::{Path, PathBuf};
 
-use super::BackupLog;
+use super::{BackupLog, BackupLogWriter};
 
 #[derive(Debug)]
 pub struct Backup {
@@ -16,7 +16,7 @@ impl Backup {
     pub fn log(&self) -> BackupLog {
         return BackupLog::create(&self.path.join("backup.log"));
     }
-    pub fn abs_path(&self, relative: &str) -> PathBuf {
+    pub fn abs_path(&self, relative: &Path) -> PathBuf {
         return self.path.join(relative);
     }
 
@@ -46,5 +46,13 @@ impl Backup {
 
     pub fn creation_time(&self) -> DateTime<chrono::Local> {
         return self.creation_time;
+    }
+
+    pub fn log_writer(&self) -> std::io::Result<BackupLogWriter> {
+        return BackupLogWriter::new(&self.log_path());
+    }
+
+    fn log_path(&self) -> PathBuf {
+        return self.path.join("backup.log");
     }
 }

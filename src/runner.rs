@@ -90,7 +90,7 @@ impl Runner {
         Ok(())
     }
 
-    pub fn replace_file_with_link(original: &Path, duplicate: &Path) {
+    pub fn replace_file_with_link(&self, original: &Path, duplicate: &Path) {
         println!("{:?} and {:?} are dups.", original, duplicate);
 
         let basedir = duplicate

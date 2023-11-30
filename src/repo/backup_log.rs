@@ -1,6 +1,7 @@
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Lines},
+    io::{self, BufRead, BufReader, BufWriter, Lines, Write},
+    os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
@@ -141,5 +142,40 @@ mod test {
                 path: "Downloads;1.mp3".to_owned(),
             })
         );
+    }
+}
+
+pub struct BackupLogWriter {
+    writer: BufWriter<File>,
+}
+
+impl BackupLogWriter {
+    pub fn new(path: &Path) -> io::Result<BackupLogWriter> {
+        return Ok(BackupLogWriter {
+            writer: BufWriter::new(File::create(path)?),
+        });
+    }
+    pub fn writeline(&self, operation: &str, path: &Path, hash: u64, mtime: i64, size: u64) {
+        let path_as_bytes = path.as_os_str().as_bytes();
+        write!(
+            self.writer,
+            "{};{:x};{};{};",
+            operation,
+            hash,
+            mtime,
+            path_as_bytes.len()
+        );
+        self.writer.write_all(path_as_bytes);
+
+        // Since a linux path can contain any bytes except a null byte we use that to end the line.
+        self.writer.write_all(&[b'\n']);
+    }
+
+    pub fn report_write(&self, path: &Path, hash: u64, mtime: i64, size: u64) {
+        self.writeline("wf", path, hash, mtime, size);
+    }
+
+    pub fn report_symlink(&self, path: &Path, hash: u64, mtime: i64, size: u64) {
+        self.writeline("ws", path, hash, mtime, size);
     }
 }
