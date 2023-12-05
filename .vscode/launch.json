@@ -22,7 +22,8 @@
             "args": [
                 "backup",
                 "--backup-path=/tmp/backup/foo",
-                "--source-paths=~/Downloads/"
+                "--source-paths=/home/dominic/Downloads",
+                // "--initialize"
             ],
             "cwd": "${workspaceFolder}"
         },

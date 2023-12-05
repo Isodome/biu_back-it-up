@@ -38,10 +38,11 @@ impl Repo {
 
     pub fn initialize(path: &Path) -> Result<Self, String> {
         if path.exists() {
-            return Err(
-                "Unable to initialize a repository at {path}. The directory does already exist."
-                    .into(),
-            );
+            return Err(format!(
+                "Unable to initialize a repository at {}. The directory does already exist.",
+                path.display()
+            )
+            .into());
         }
         fs::create_dir_all(path).map_err(|e| {
             format!(

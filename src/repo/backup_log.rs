@@ -155,14 +155,15 @@ impl BackupLogWriter {
             writer: BufWriter::new(File::create(path)?),
         });
     }
-    pub fn writeline(&self, operation: &str, path: &Path, hash: u64, mtime: i64, size: u64) {
+    pub fn writeline(&mut self, operation: &str, path: &Path, hash: u64, mtime: i64, size: u64) {
         let path_as_bytes = path.as_os_str().as_bytes();
         write!(
             self.writer,
-            "{};{:x};{};{};",
+            "{};{:x};{};{};{};",
             operation,
             hash,
             mtime,
+            size,
             path_as_bytes.len()
         );
         self.writer.write_all(path_as_bytes);
@@ -171,11 +172,11 @@ impl BackupLogWriter {
         self.writer.write_all(&[b'\n']);
     }
 
-    pub fn report_write(&self, path: &Path, hash: u64, mtime: i64, size: u64) {
+    pub fn report_write(&mut self, path: &Path, hash: u64, mtime: i64, size: u64) {
         self.writeline("wf", path, hash, mtime, size);
     }
 
-    pub fn report_symlink(&self, path: &Path, hash: u64, mtime: i64, size: u64) {
+    pub fn report_symlink(&mut self, path: &Path, hash: u64, mtime: i64, size: u64) {
         self.writeline("ws", path, hash, mtime, size);
     }
 }

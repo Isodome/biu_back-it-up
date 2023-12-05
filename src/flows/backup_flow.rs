@@ -4,6 +4,8 @@ use crate::Runner;
 use std::path::Path;
 use std::path::PathBuf;
 
+use super::filesystem::make_backup;
+
 #[derive()]
 pub struct BackupOptions<'a> {
     pub source_paths: &'a [PathBuf],
@@ -16,6 +18,7 @@ pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Re
     if target_backup.path().is_dir() {
         return Err(String::from("Backup path already exists"));
     }
+    return make_backup(opts.source_paths, &target_backup, None);
 
     let mut rsync_flags = vec![
         // Propagate deletions
