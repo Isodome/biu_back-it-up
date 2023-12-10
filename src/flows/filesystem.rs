@@ -161,38 +161,38 @@ fn copy_directory_incremental_recursive(
         .collect::<io::Result<Vec<PathBuf>>>()?;
     dir_contents.sort();
 
-    for file_name in dir_contents {
-        let full_path = source.join(&file_name);
-        let source_meta = std::fs::symlink_metadata(&full_path)?;
+    // for file_name in dir_contents {
+    //     let full_path = source.join(&file_name);
+    //     let source_meta = std::fs::symlink_metadata(&full_path)?;
 
-        let dest_path = to.join(&file_name);
-        if source_meta.file_type().is_dir() {
-            copy_directory_incremental_recursive(
-                &full_path,
-                &dest_path,
-                prev_backup,
-                backup_log_writer,
-            )?;
-        } else if source_meta.file_type().is_file() {
-            let prev_file = prev_backup.peek().unwrap()?;
-            let xxh3 = copy_file(&full_path, &dest_path)?;
-            backup_log_writer.report_write(
-                &dest_path,
-                xxh3,
-                source_meta.mtime(),
-                source_meta.size(),
-            )?;
-        } else if source_meta.file_type().is_symlink() {
-            // We don't follow symlinks but copy them as is
-            let xxh3 = make_symlink(&fs::read_link(&full_path)?, &dest_path)?;
-            backup_log_writer.report_symlink(
-                &dest_path,
-                xxh3,
-                source_meta.mtime(),
-                source_meta.size(),
-            )?;
-        }
-        // We silently ignore sockets, fifos and block devices.
-    }
+    //     let dest_path = to.join(&file_name);
+    //     if source_meta.file_type().is_dir() {
+    //         copy_directory_incremental_recursive(
+    //             &full_path,
+    //             &dest_path,
+    //             prev_backup,
+    //             backup_log_writer,
+    //         )?;
+    //     } else if source_meta.file_type().is_file() {
+    //         let prev_file = prev_backup.peek().unwrap()?;
+    //         let xxh3 = copy_file(&full_path, &dest_path)?;
+    //         backup_log_writer.report_write(
+    //             &dest_path,
+    //             xxh3,
+    //             source_meta.mtime(),
+    //             source_meta.size(),
+    //         )?;
+    //     } else if source_meta.file_type().is_symlink() {
+    //         // We don't follow symlinks but copy them as is
+    //         let xxh3 = make_symlink(&fs::read_link(&full_path)?, &dest_path)?;
+    //         backup_log_writer.report_symlink(
+    //             &dest_path,
+    //             xxh3,
+    //             source_meta.mtime(),
+    //             source_meta.size(),
+    //         )?;
+    //     }
+    //     // We silently ignore sockets, fifos and block devices.
+    // }
     Ok(())
 }

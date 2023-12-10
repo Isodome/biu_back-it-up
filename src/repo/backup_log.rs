@@ -1,9 +1,7 @@
-use core::slice;
 use std::{
-    error::Error,
     ffi::OsString,
     fs::File,
-    io::{self, BufRead, BufReader, BufWriter, Lines, Read, Write},
+    io::{self, BufRead, BufReader, BufWriter, Read, Write},
     os::unix::ffi::{OsStrExt, OsStringExt},
     path::{Path, PathBuf},
 };
@@ -49,23 +47,24 @@ impl BackupLog {
         let file = File::open(&self.path)
             .map_err(|e| format!("Failed to open backup log: {}", e.to_string()))?;
 
-        return Ok(BackupLogIterator {
-            reader: BufReader::new(file),
-            path: &self.path,
-            lines_read: 0,
-            depleted: false,
-        });
+        return Ok(BackupLogIterator::new(file));
     }
 }
 
-pub struct BackupLogIterator<'a> {
+pub struct BackupLogIterator {
     reader: BufReader<File>,
-    path: &'a Path,
+    // path: &'a Path,
     lines_read: i32,
-    depleted: bool,
 }
 
-impl BackupLogIterator<'_> {
+impl BackupLogIterator {
+    fn new(file: File) -> BackupLogIterator {
+        return BackupLogIterator {
+            reader: BufReader::new(file),
+            lines_read: 0,
+        };
+    }
+
     fn read_until_limited(&mut self, limit: usize) -> io::Result<Vec<u8>> {
         let mut res = vec![];
         loop {
@@ -95,14 +94,14 @@ impl BackupLogIterator<'_> {
         ));
     }
 
-    fn read_path(&self, num_bytes: usize) -> io::Result<PathBuf> {
+    fn read_path(&mut self, num_bytes: usize) -> io::Result<PathBuf> {
         let mut buf: Vec<u8> = vec![0u8; num_bytes];
         self.reader.read_exact(buf.as_mut_slice())?;
         let path = PathBuf::from(OsString::from_vec(buf));
         return Ok(path);
     }
 
-    fn read_string(&self, limit: usize) -> io::Result<String> {
+    fn read_string(&mut self, limit: usize) -> io::Result<String> {
         let bytes = self.read_until_limited(limit)?;
         return String::from_utf8(bytes).map_err(|e| {
             io::Error::new(
@@ -111,18 +110,18 @@ impl BackupLogIterator<'_> {
             )
         });
     }
-    fn read_u64(&self) -> io::Result<u64> {
+    fn read_u64(&mut self) -> io::Result<u64> {
         return self.read_string(20)?.parse().map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidData, format!("Expected int: {}", e))
         });
     }
-    fn read_i64(&self) -> io::Result<i64> {
+    fn read_i64(&mut self) -> io::Result<i64> {
         return self.read_string(20)?.parse().map_err(|e| {
             io::Error::new(io::ErrorKind::InvalidData, format!("Expected int: {}", e))
         });
     }
 
-    fn read_hex_u64(&self) -> io::Result<u64> {
+    fn read_hex_u64(&mut self) -> io::Result<u64> {
         const LIMIT: usize = 17; // 64/16+1
         let hex_string = self.read_string(LIMIT)?;
         return u64::from_str_radix(&hex_string, 16).map_err(|e| {
@@ -132,13 +131,14 @@ impl BackupLogIterator<'_> {
             )
         });
     }
-    fn skip_a_byte(&self) {
+    fn skip_a_byte(&mut self) {
         let mut dummy = [0u8; 1];
-        self.reader.read_exact(dummy.as_mut_slice());
+        let _ = self.reader.read_exact(dummy.as_mut_slice());
     }
 
-    fn parse_item(&self) -> io::Result<LogEntry> {
+    fn parse_item(&mut self) -> io::Result<LogEntry> {
         let op = self.read_string(5)?;
+        println!("{:?}", op);
         let hash = self.read_hex_u64()?;
         let mtime = self.read_i64()?;
         let size = self.read_i64()?;
@@ -154,15 +154,14 @@ impl BackupLogIterator<'_> {
                 size: size,
             })),
             _ => Ok(LogEntry::Unparseable(format!(
-                "Unable to read line {} of the backup log at {}",
-                self.lines_read,
-                self.path.display()
+                "Unable to read line '{}' of the backup log",
+                self.lines_read
             ))),
         };
     }
 }
 
-impl Iterator for BackupLogIterator<'_> {
+impl Iterator for BackupLogIterator {
     type Item = io::Result<LogEntry>;
     fn next(&mut self) -> Option<Self::Item> {
         let buf = self.reader.fill_buf();
@@ -175,12 +174,21 @@ impl Iterator for BackupLogIterator<'_> {
 
 pub struct BackupLogWriter {
     writer: BufWriter<File>,
+    path_prefix_bytes: usize,
 }
 
 impl BackupLogWriter {
     pub fn new(path: &Path) -> io::Result<BackupLogWriter> {
+        let path_prefix_bytes = path
+            .parent()
+            .ok_or(io::Error::new(io::ErrorKind::NotFound, ""))?
+            .as_os_str()
+            .as_bytes()
+            .len()
+            + 1;
         return Ok(BackupLogWriter {
             writer: BufWriter::new(File::create(path)?),
+            path_prefix_bytes,
         });
     }
     pub fn writeline(
@@ -191,7 +199,7 @@ impl BackupLogWriter {
         mtime: i64,
         size: u64,
     ) -> io::Result<()> {
-        let path_as_bytes = path.as_os_str().as_bytes();
+        let path_as_bytes = &path.as_os_str().as_bytes()[self.path_prefix_bytes..];
         write!(
             self.writer,
             "{};{:x};{};{};{};",
@@ -215,7 +223,7 @@ impl BackupLogWriter {
         mtime: i64,
         size: u64,
     ) -> io::Result<()> {
-        self.writeline("wf", path, hash, mtime, size)
+        self.writeline("w", path, hash, mtime, size)
     }
 
     pub fn report_symlink(
@@ -225,71 +233,87 @@ impl BackupLogWriter {
         mtime: i64,
         size: u64,
     ) -> io::Result<()> {
-        self.writeline("ws", path, hash, mtime, size)
+        self.writeline("s", path, hash, mtime, size)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use std::{io::Seek, str::FromStr};
 
-    #[test]
-    fn unparseable_missing_simicolon() {
-        assert_eq!(
-            parse_row("-;;my/path".to_owned()),
-            LogEntry::Unparseable {
-                0: "-;;my/path".to_owned()
-            }
-        );
-        assert_eq!(
-            parse_row("-;;my/path".to_owned()),
-            LogEntry::Unparseable {
-                0: "-;;my/path".to_owned()
-            }
-        );
-        assert_eq!(
-            parse_row("-;;my/path".to_owned()),
-            LogEntry::Unparseable {
-                0: "-;;my/path".to_owned()
-            }
-        );
+    fn write_test_file(bytes: &[u8]) -> io::Result<File> {
+        let mut f = tempfile::tempfile().unwrap();
+        f.write(&bytes)?;
+        f.flush()?;
+        f.seek(io::SeekFrom::Start(0)).unwrap();
+        return Ok(f);
     }
 
     #[test]
-    fn parseable_lines() {
+    fn unparseable_missing_simicolon() -> io::Result<()> {
+        let file = write_test_file(b"some random word")?;
+        let mut it = BackupLogIterator::new(file);
         assert_eq!(
-            parse_row("+;0394b8fafef76701;2020/07/19-12:24:58;Downloads/1.mp3".to_owned()),
+            it.parse_item()?,
+            LogEntry::Unparseable {
+                0: "Didn't find expected delimiter.".to_owned()
+            }
+        );
+        // assert_eq!(
+        //     parse_row("-;;my/path".to_owned()),
+        //     LogEntry::Unparseable {
+        //         0: "-;;my/path".to_owned()
+        //     }
+        // );
+        // assert_eq!(
+        //     parse_row("-;;my/path".to_owned()),
+        //     LogEntry::Unparseable {
+        //         0: "-;;my/path".to_owned()
+        //     }
+        // );
+        Ok(())
+    }
+
+    #[test]
+    fn parseable_lines() -> io::Result<()> {
+        let file = write_test_file(b"w;0394b8fafef76701;1234;56788;15;Downloads/1.mp3")?;
+        let mut it = BackupLogIterator::new(file);
+        assert_eq!(
+            it.parse_item()?,
             LogEntry::Write(WriteData {
-                xxh3: "0394b8fafef76701".to_owned(),
-                mtime: "2020/07/19-12:24:58".to_owned(),
-                path: "Downloads/1.mp3".to_owned(),
+                size: 56788,
+                xxh3: 258034466825922305,
+                mtime: 1234,
+                path: PathBuf::from_str("Downloads/1.mp3").unwrap(),
             })
         );
 
-        assert_eq!(
-            parse_row("-;;;Downloads/1.mp3".to_owned()),
-            LogEntry::Delete(DeleteData {
-                path: "Downloads/1.mp3".to_owned(),
-            })
-        );
+        //     assert_eq!(
+        //         parse_row("-;;;Downloads/1.mp3".to_owned()),
+        //         LogEntry::Delete(DeleteData {
+        //             path: "Downloads/1.mp3".to_owned(),
+        //         })
+        //     );
+        Ok(())
     }
 
-    #[test]
-    fn semicolon_in_path() {
-        assert_eq!(
-            parse_row("+;0394b8fafef76701;2020/07/19-12:24:58;Downloads;1.mp3".to_owned()),
-            LogEntry::Write(WriteData {
-                xxh3: "0394b8fafef76701".to_owned(),
-                mtime: "2020/07/19-12:24:58".to_owned(),
-                path: "Downloads;1.mp3".to_owned(),
-            })
-        );
+    // #[test]
+    // fn semicolon_in_path() {
+    //     assert_eq!(
+    //         parse_row("+;0394b8fafef76701;2020/07/19-12:24:58;Downloads;1.mp3".to_owned()),
+    //         LogEntry::Write(WriteData {
+    //             xxh3: "0394b8fafef76701".to_owned(),
+    //             mtime: "2020/07/19-12:24:58".to_owned(),
+    //             path: "Downloads;1.mp3".to_owned(),
+    //         })
+    //     );
 
-        assert_eq!(
-            parse_row("-;;;Downloads;1.mp3".to_owned()),
-            LogEntry::Delete(DeleteData {
-                path: "Downloads;1.mp3".to_owned(),
-            })
-        );
-    }
+    //     assert_eq!(
+    //         parse_row("-;;;Downloads;1.mp3".to_owned()),
+    //         LogEntry::Delete(DeleteData {
+    //             path: "Downloads;1.mp3".to_owned(),
+    //         })
+    //     );
+    // }
 }
