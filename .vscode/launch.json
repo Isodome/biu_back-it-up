@@ -23,7 +23,7 @@
                 "backup",
                 "--backup-path=/tmp/backup/foo",
                 "--source-paths=/home/dominic/Downloads",
-                // "--initialize"
+                "--initialize"
             ],
             "cwd": "${workspaceFolder}"
         },

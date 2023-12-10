@@ -1,6 +1,6 @@
 use std::{
     fs::{self, File},
-    io::{self, BufRead, BufReader, Write},
+    io::{self, BufRead, BufReader, Read, Write},
     iter::Peekable,
     os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::{Path, PathBuf},
@@ -77,26 +77,30 @@ pub fn make_backup(
 }
 
 fn copy_file(from: &Path, to: &Path) -> io::Result<u64> {
-    let mut from_file = BufReader::new(File::open(from)?);
+    let mut from_file = File::open(from)?;
+
+    let mut buffer = [0u8; 4096];
     let mut to_file = File::create(to)?;
 
     let mut hasher = xxhash_rust::xxh3::Xxh3::new();
-
     loop {
-        let bytes = from_file.fill_buf()?;
-        let bytes_read = bytes.len();
+        let bytes_read = from_file.read(buffer.as_mut_slice())?;
         if bytes_read == 0 {
             break;
         }
-        hasher.update(bytes);
-        to_file.write_all(bytes)?;
-        from_file.consume(bytes_read);
+        hasher.update(&buffer[0..bytes_read]);
+        to_file.write_all(&buffer[0..bytes_read])?;
     }
 
     return Ok(hasher.digest());
 }
 
 fn make_symlink(target: &Path, to: &Path) -> io::Result<u64> {
+    std::os::unix::fs::symlink(target, to)?;
+    return Ok(xxhash_rust::xxh3::xxh3_64(target.as_os_str().as_bytes()));
+}
+
+fn make_hardlink(target: &Path, to: &Path) -> io::Result<u64> {
     std::os::unix::fs::symlink(target, to)?;
     return Ok(xxhash_rust::xxh3::xxh3_64(target.as_os_str().as_bytes()));
 }
@@ -127,7 +131,7 @@ fn copy_directory_recursive(
                 xxh3,
                 source_meta.mtime(),
                 source_meta.size(),
-            );
+            )?;
         } else if source_meta.file_type().is_symlink() {
             // We don't follow symlinks but copy them as is
             let xxh3 = make_symlink(&fs::read_link(&full_path)?, &dest_path)?;
@@ -136,7 +140,7 @@ fn copy_directory_recursive(
                 xxh3,
                 source_meta.mtime(),
                 source_meta.size(),
-            );
+            )?;
         }
         // We silently ignore sockets, fifos and block devices.
     }
@@ -152,20 +156,43 @@ fn copy_directory_incremental_recursive(
     if !prev_backup.peek().is_none() {
         return copy_directory_recursive(source, to, backup_log_writer);
     }
+    let mut dir_contents: Vec<PathBuf> = fs::read_dir(source)?
+        .map(|entry| entry.map(|e| PathBuf::from(e.file_name())))
+        .collect::<io::Result<Vec<PathBuf>>>()?;
+    dir_contents.sort();
 
-    // for item in fs::read_dir(source)? {
-    //     let file_name = &item?.file_name();
-    //     let file_type = &item?.file_type()?;
+    for file_name in dir_contents {
+        let full_path = source.join(&file_name);
+        let source_meta = std::fs::symlink_metadata(&full_path)?;
 
-    //     let dest_path = to.join(file_name);
-    //     let prev_path = prev_backup.join(file_name);
-
-    //     let previous = fs::metadata(prev_backup.unwrap().join(file_name));
-    //     if file_type.is_dir() {
-    //         fs::create_dir(dest_path)
-    //         copy_directory_incremental_recursive(&item?.path() ,&dest_path, &prev_path)?;
-    //     } else if file_type.is_file()
-    // }
-
+        let dest_path = to.join(&file_name);
+        if source_meta.file_type().is_dir() {
+            copy_directory_incremental_recursive(
+                &full_path,
+                &dest_path,
+                prev_backup,
+                backup_log_writer,
+            )?;
+        } else if source_meta.file_type().is_file() {
+            let prev_file = prev_backup.peek().unwrap()?;
+            let xxh3 = copy_file(&full_path, &dest_path)?;
+            backup_log_writer.report_write(
+                &dest_path,
+                xxh3,
+                source_meta.mtime(),
+                source_meta.size(),
+            )?;
+        } else if source_meta.file_type().is_symlink() {
+            // We don't follow symlinks but copy them as is
+            let xxh3 = make_symlink(&fs::read_link(&full_path)?, &dest_path)?;
+            backup_log_writer.report_symlink(
+                &dest_path,
+                xxh3,
+                source_meta.mtime(),
+                source_meta.size(),
+            )?;
+        }
+        // We silently ignore sockets, fifos and block devices.
+    }
     Ok(())
 }
