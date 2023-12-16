@@ -21,9 +21,9 @@
             },
             "args": [
                 "backup",
-                "--backup-path=/tmp/backup/foo",
+                "--backup-path=/tmp/biu",
                 "--source-paths=/home/dominic/Downloads",
-                "--initialize"
+                // "--initialize"
             ],
             "cwd": "${workspaceFolder}"
         },

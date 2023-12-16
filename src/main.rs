@@ -94,7 +94,7 @@ fn run() -> Result<(), String> {
             };
             let repo = Repo::from(&backup_opts.backup_path, args.initialize)?;
 
-            return flows::run_backup_flow(&repo, &backup_opts, &runner);
+            return flows::run_backup_flow(&repo, &backup_opts);
             // return flows::run_deduplication_flow(
             //     &Repo::existing(&backup_opts.backup_path)?,
             //     &DeduplicationOptions {

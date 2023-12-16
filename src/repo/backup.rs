@@ -1,7 +1,48 @@
 use chrono::{DateTime, NaiveDateTime, TimeZone};
-use std::path::{Path, PathBuf};
+use std::{
+    os::unix::ffi::OsStrExt,
+    path::{Path, PathBuf},
+};
 
 use super::{BackupLog, BackupLogWriter};
+
+// A path as it appears in the backup log
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+pub struct BackupLogPath(PathBuf);
+
+impl BackupLogPath {
+    /// Length in bytes.
+    pub fn bytes_len(&self) -> usize {
+        return self.as_bytes().len();
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        return self.0.as_os_str().as_bytes();
+    }
+
+    /// Returnst the path of this file in a given backup.
+    pub fn path_in_backup(&self, backup: &Backup) -> PathBuf {
+        return backup.path().join(&self.0);
+    }
+
+    pub fn join<T>(&self, path: T) -> BackupLogPath
+    where
+        T: AsRef<Path>,
+    {
+        return BackupLogPath(self.0.join(path));
+    }
+}
+
+impl From<PathBuf> for BackupLogPath {
+    fn from(value: PathBuf) -> Self {
+        return BackupLogPath(value);
+    }
+}
+impl From<&Path> for BackupLogPath {
+    fn from(value: &Path) -> Self {
+        return BackupLogPath(value.into());
+    }
+}
 
 #[derive(Debug)]
 pub struct Backup {
@@ -14,7 +55,7 @@ impl Backup {
         return self.path.as_path();
     }
     pub fn log(&self) -> BackupLog {
-        return BackupLog::create(&self.path.join("backup.log"));
+        return BackupLog::create(&self.path);
     }
     pub fn abs_path(&self, relative: &Path) -> PathBuf {
         return self.path.join(relative);

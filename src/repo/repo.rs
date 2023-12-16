@@ -4,15 +4,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-pub struct Repo {
-    path: PathBuf,
-    backups: Vec<Backup>,
-}
-
 #[derive(Debug)]
 pub enum OpenRepoError {
     RepoNotInitializedError,
     IoError(io::Error),
+}
+
+pub struct Repo {
+    path: PathBuf,
+    backups: Vec<Backup>,
 }
 
 impl Repo {
@@ -51,6 +51,7 @@ impl Repo {
                 e.to_string()
             )
         })?;
+
         Ok(Repo {
             path: PathBuf::from(path),
             backups: Vec::new(),
@@ -75,8 +76,8 @@ impl Repo {
         })
     }
 
-    pub fn has_no_backups(&self) -> bool {
-        return self.num_backups() == 0;
+    pub fn latest_backup(&self) -> Option<&Backup> {
+        self.backups.last()
     }
 }
 

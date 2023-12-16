@@ -1,10 +1,10 @@
 use crate::repo::Backup;
 use crate::repo::Repo;
-use crate::Runner;
 use std::path::Path;
 use std::path::PathBuf;
 
 use super::filesystem::make_backup;
+use super::filesystem::BackupContext;
 
 #[derive()]
 pub struct BackupOptions<'a> {
@@ -13,75 +13,17 @@ pub struct BackupOptions<'a> {
     pub archive_mode: bool,
 }
 
-pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions, runner: &Runner) -> Result<(), String> {
+pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions) -> Result<(), String> {
     let target_backup = Backup::new_backup_now(&repo.path());
     if target_backup.path().is_dir() {
         return Err(String::from("Backup path already exists"));
     }
-    return make_backup(opts.source_paths, &target_backup, None);
 
-    let mut rsync_flags = vec![
-        // Propagate deletions
-        "--delete",
-        // No rsync deltas for local backups
-        "--whole-file",
-        // We want a list of all the changed files.
-        // Doc: https://linux.die.net/man/5/rsyncd.conf under "log format"
-        // We keep:
-        // * %o: The operation (Send or Del.)
-        // * %C: The checksum
-        // * $M: The mtime of the file
-        // * %n: the name/path of the file.
-        "--out-format=%o;%C;%M;%n",
-        // The default algorithm outputs 128 bits. We"re happy usin xxh3"s 64 bits.
-        "--checksum-choice=xxh3",
-    ];
+    let backup_context = BackupContext {
+        new_backup: &target_backup,
+        prev_backup: repo.latest_backup(),
+        repo: &repo,
+    };
 
-    if opts.archive_mode {
-        rsync_flags.push("--archive")
-    } else {
-        // We're not using the archive mode by default since preserving permissions is
-        // not what we need. Rsync's archive is equivalent to -rlptgoD. We don't want to
-        // preserve permissions(p), owner(o) nor group(g).
-        // We want to follow symlinks, not copy them(l).
-        // We don't want to copy devices or special files (we don't even want to allow
-        // them in the source)
-        rsync_flags.extend([
-            "--recursive",
-            "--links",
-            "--hard-links",
-            "--times",
-            "--xattrs",
-        ]);
-    }
-
-    let backup_log_path = target_backup.log().path;
-    if let Some(last_backup) = repo.backups().last() {
-        runner.copy_as_hardlinks(&last_backup.path(), target_backup.path())?;
-        runner.remove_file(&backup_log_path)?;
-    } else {
-        runner.make_dir(target_backup.path())?;
-    }
-
-    runner.rsync(
-        &rsync_flags,
-        opts.source_paths,
-        target_backup.path(),
-        &backup_log_path,
-    )?;
-
-    // Modify the backup log a bit to save storage space (we don't want to zip)
-    runner.sed(&vec![
-        "-i",
-        "-e",
-        r"/\/$/d", // Delete lines ending in / (=folders)
-        "-e",
-        r"s/^send/+/", // Replace "send" with +
-        "-e",
-        r"s/^del./-/", // Replace "del."" with -
-        backup_log_path.to_str().expect("Invalid path"),
-    ])?;
-
-    // Sort the backup log in place such that it's sorted by the base64 hashes.
-    runner.sort(&backup_log_path)
+    return make_backup(opts.source_paths, &backup_context);
 }
