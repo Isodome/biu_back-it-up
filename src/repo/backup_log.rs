@@ -1,15 +1,15 @@
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     fs::File,
     io::{self, empty, BufRead, BufReader, BufWriter, Read, Write},
-    os::unix::ffi::{OsStrExt, OsStringExt},
+    os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
 };
 
 use super::BackupLogPath;
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct WriteData {
+pub struct BackupFileStats {
     pub path: BackupLogPath,
     pub xxh3: u64,
     pub mtime: i64,
@@ -23,7 +23,7 @@ pub struct DeleteData {
 
 #[derive(Debug, PartialEq)]
 pub enum LogEntry {
-    Write(WriteData),
+    Write(BackupFileStats),
     Delete(DeleteData),
 }
 
@@ -161,7 +161,7 @@ impl BackupLogIterator {
 
         self.skip_a_byte(); // Skipping the newline. We ignore errors here.
         return match op.as_str() {
-            "w" | "l" => Ok(LogEntry::Write(WriteData {
+            "w" | "l" => Ok(LogEntry::Write(BackupFileStats {
                 path: path.into(),
                 xxh3: hash,
                 mtime: mtime,
@@ -187,14 +187,54 @@ impl Iterator for BackupLogIterator {
     }
 }
 
+pub struct BackupFilesLogIterator {
+    inner: BackupLogIterator,
+}
+impl BackupFilesLogIterator {
+    pub fn new(inner: BackupLogIterator) -> BackupFilesLogIterator {
+        return BackupFilesLogIterator { inner };
+    }
+}
+
+/// A log iterator that will only read those log entries that point to file that exists in a backup.
+impl Iterator for BackupFilesLogIterator {
+    type Item = io::Result<BackupFileStats>;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let log_entry = match self.inner.next() {
+                Some(e) => e,
+                None => return None,
+            };
+            let entry = match log_entry {
+                Ok(entry) => entry,
+                Err(e) => return Some(Err(e)),
+            };
+            match entry {
+                LogEntry::Write(wd) => return Some(Ok(wd)),
+                _ => (),
+            }
+        }
+    }
+}
+
 pub struct BackupLogWriter {
     writer: BufWriter<File>,
+
+    // Stats
+    num_writes: i32,
+    num_hardlinks: i32,
+    num_deletes: i32,
+    bytes_written: u64,
 }
 
 impl BackupLogWriter {
     pub fn new(path: &Path) -> io::Result<BackupLogWriter> {
         return Ok(BackupLogWriter {
             writer: BufWriter::new(File::create(path)?),
+            num_writes: 0,
+            num_hardlinks: 0,
+            num_deletes: 0,
+            bytes_written: 0,
         });
     }
     pub fn writeline(
@@ -228,6 +268,8 @@ impl BackupLogWriter {
         mtime: i64,
         size: u64,
     ) -> io::Result<()> {
+        self.num_writes += 1;
+        self.bytes_written += size;
         self.writeline("w", path, hash, mtime, size)
     }
 
@@ -238,10 +280,12 @@ impl BackupLogWriter {
         mtime: i64,
         size: u64,
     ) -> io::Result<()> {
+        self.num_hardlinks += 1;
         self.writeline("l", path, hash, mtime, size)
     }
 
     pub fn report_delete(&mut self, path: &BackupLogPath) -> io::Result<()> {
+        self.num_deletes += 1;
         self.writeline("d", path, 0, 0, 0)
     }
 }
@@ -297,7 +341,7 @@ mod test {
         let mut it = BackupLogIterator::new(file);
         assert_eq!(
             it.next().unwrap()?,
-            LogEntry::Write(WriteData {
+            LogEntry::Write(BackupFileStats {
                 size: 56788,
                 xxh3: 258034466825922305,
                 mtime: 1234,

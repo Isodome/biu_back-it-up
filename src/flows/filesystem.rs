@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::repo::{
-    Backup, BackupLogIterator, BackupLogPath, BackupLogWriter, LogEntry, Repo, WriteData,
+    Backup, BackupFilesLogIterator, BackupLogIterator, BackupLogPath, BackupLogWriter, Repo,
 };
 
 struct BackupSource {
@@ -61,10 +61,10 @@ pub fn make_backup(sources: &[PathBuf], context: &BackupContext) -> Result<(), S
         .new_backup
         .log_writer()
         .map_err(|e| format!("Can't create backup log: {}", e))?;
-    let mut backup_log_reader = match context.prev_backup {
+    let mut backup_log_reader = BackupFilesLogIterator::new(match context.prev_backup {
         Some(backup) => backup.log().iter()?,
         None => BackupLogIterator::empty(),
-    }
+    })
     .peekable();
 
     for source in sorted_sources {
@@ -77,6 +77,9 @@ pub fn make_backup(sources: &[PathBuf], context: &BackupContext) -> Result<(), S
         )
         .map_err(|e| format!("Unable to backup {}: {:?}", source.path.display(), e))?;
     }
+    // We silently ignore errors here since failure to report missing files is not a fatal error.
+    let _ = report_remaining_deletes(&mut backup_log_reader, &mut backup_log_writer);
+
     Ok(())
 }
 
@@ -104,35 +107,43 @@ fn make_symlink(target: &Path, to: &Path) -> io::Result<u64> {
     return Ok(xxhash_rust::xxh3::xxh3_64(target.as_os_str().as_bytes()));
 }
 
-fn skip_over_deleted_files(
-    path: &BackupLogPath,
-    prev_backup: &mut Peekable<BackupLogIterator>,
+fn report_remaining_deletes(
+    log_iter: &mut Peekable<BackupFilesLogIterator>,
     backup_log_writer: &mut BackupLogWriter,
-) -> io::Result<Option<WriteData>> {
+) -> io::Result<()> {
+    while let Some(log_entry) = log_iter.next() {
+        backup_log_writer.report_delete(&log_entry?.path)?;
+    }
+    Ok(())
+}
+
+fn report_deletes_until_file(
+    path: &BackupLogPath,
+    prev_backup: &mut Peekable<BackupFilesLogIterator>,
+    backup_log_writer: &mut BackupLogWriter,
+) -> io::Result<bool> {
     while let Some(data) = prev_backup.peek() {
-        let prev_file_log_entry = match data {
+        let write_data = match data {
             Ok(f) => f,
             Err(e) => return Err(io::Error::new(e.kind(), e.to_string())),
         };
 
-        if let LogEntry::Write(wd) = prev_file_log_entry {
-            let ord = wd.path.cmp(path);
-            if ord == Ordering::Equal {
-                return Ok(Some(wd.clone())); // Iterator matched.
-            } else if ord == Ordering::Greater {
-                return Ok(None); // The file seems to be missing
-            }
-            backup_log_writer.report_delete(&wd.path)?;
+        let ord = write_data.path.cmp(path);
+        if ord == Ordering::Equal {
+            return Ok(true); // Iterator matched.
+        } else if ord == Ordering::Greater {
+            return Ok(false); // The file seems to be missing
         }
+        backup_log_writer.report_delete(&write_data.path)?;
         prev_backup.next();
     }
-    return Ok(None);
+    return Ok(false);
 }
 
 fn copy_directory_incremental_recursive(
     source_dir: &Path,
     to_dir: &BackupLogPath,
-    prev_backup: &mut Peekable<BackupLogIterator>,
+    prev_backup: &mut Peekable<BackupFilesLogIterator>,
     backup_log_writer: &mut BackupLogWriter,
     context: &BackupContext,
 ) -> io::Result<()> {
@@ -159,10 +170,10 @@ fn copy_directory_incremental_recursive(
             continue;
         }
 
-        let file_in_previous_backup =
-            skip_over_deleted_files(&dest_path, prev_backup, backup_log_writer)?;
-        let dest_file_abs_path = dest_path.path_in_backup(context.new_backup);
-        if let Some(file_in_previous) = file_in_previous_backup {
+        let next_matches = report_deletes_until_file(&dest_path, prev_backup, backup_log_writer)?;
+
+        if next_matches {
+            let file_in_previous = prev_backup.next().unwrap()?;
             if file_in_previous.mtime == to_copy_meta.mtime()
                 && file_in_previous.size == to_copy_meta.size()
             {
@@ -179,8 +190,10 @@ fn copy_directory_incremental_recursive(
                 // File was found, we linked it. Yay!
                 continue;
             }
+            prev_backup.next();
         }
 
+        let dest_file_abs_path = dest_path.path_in_backup(context.new_backup);
         if to_copy_meta.file_type().is_file() {
             let xxh3 = copy_file(&to_copy_abs_path, &dest_file_abs_path)?;
             backup_log_writer.report_write(

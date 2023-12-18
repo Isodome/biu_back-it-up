@@ -57,9 +57,6 @@ impl Backup {
     pub fn log(&self) -> BackupLog {
         return BackupLog::create(&self.path);
     }
-    pub fn abs_path(&self, relative: &Path) -> PathBuf {
-        return self.path.join(relative);
-    }
 
     pub fn from_existing<P: Into<PathBuf>>(path: P) -> Option<Self> {
         let pathbuf: PathBuf = path.into();
