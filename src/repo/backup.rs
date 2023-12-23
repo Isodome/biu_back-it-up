@@ -1,13 +1,14 @@
 use chrono::{DateTime, NaiveDateTime, TimeZone};
 use std::{
+    io::Write,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
 };
 
-use super::{BackupLog, BackupLogWriter};
+use super::{BackupLog, BackupLogWriter, BackupStats};
 
 // A path as it appears in the backup log
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub struct BackupLogPath(PathBuf);
 
 impl BackupLogPath {
@@ -89,8 +90,20 @@ impl Backup {
     pub fn log_writer(&self) -> std::io::Result<BackupLogWriter> {
         return BackupLogWriter::new(&self.log_path());
     }
+    pub fn write_stats(&self, stats: &BackupStats) -> std::io::Result<()> {
+        let mut stats_file = std::fs::File::create(self.stats_path())?;
+        stats_file.write_all(stats.as_toml().as_bytes())
+    }
 
     fn log_path(&self) -> PathBuf {
         return self.path.join("backup.log");
+    }
+    fn stats_path(&self) -> PathBuf {
+        return self.path.join("backup.stats");
+    }
+    fn read_stats(&self) -> std::io::Result<BackupStats> {
+        return Ok(BackupStats::from_toml(&std::fs::read_to_string(
+            self.stats_path(),
+        )?));
     }
 }

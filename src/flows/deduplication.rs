@@ -1,4 +1,4 @@
-use crate::repo::{LogEntry, Repo, WriteData};
+use crate::repo::{Backup, LogEntry, NewFilesLogIterator, Repo};
 use crate::runner::Runner;
 use std::collections::HashMap;
 use std::fs::{File, Metadata};
@@ -20,16 +20,28 @@ fn log_entry_to_hash(entry: Option<&Result<LogEntry, String>>) -> Option<&str> {
     };
 }
 
+fn all_hashes_in_backup(backup: &Backup) -> Result<Vec<u64>, String> {
+    let mut all_hashes = Vec::new();
+    for new_file in NewFilesLogIterator::from(backup.log().iter()?) {
+        all_hashes.push(new_file.map_err(|e| "Unable to read the backup log.")?.xxh3);
+    }
+    all_hashes.sort();
+    return Ok(all_hashes);
+}
+
 pub fn run_deduplication_flow(
     repo: &Repo,
     opts: &DeduplicationOptions,
     runner: &Runner,
 ) -> Result<(), String> {
-    if repo.has_no_backups() {
-        return Ok(());
-    }
+    let latest_backup = match repo.latest_backup() {
+        None => return Ok(()),
+        Some(b) => b,
+    };
 
     let backups = repo.backups();
+
+    let all_hashes = all_hashes_in_backup(&backup);
 
     let mut batch = FileBatch::new();
 

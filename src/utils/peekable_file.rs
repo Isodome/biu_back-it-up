@@ -1,23 +1,27 @@
 use std::{
-    io::{self, BufRead, BufReader, Read},
+    io::{self, BufRead, BufReader, Read, Seek},
     os::unix::ffi::OsStringExt,
     path::PathBuf,
 };
 
-pub struct PeekableReader<R> {
+/// Parses hybrids between csv and binary files.
+pub struct HybridFileParser<R> {
     reader: BufReader<R>,
 }
 
-impl<R: Read> Read for PeekableReader<R> {
+pub trait PeekableFile: Seek + Read {}
+impl<T: Seek + Read> PeekableFile for T {}
+
+impl<R: Read> Read for HybridFileParser<R> {
     #[inline]
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         return self.reader.read(buf);
     }
 }
 
-impl<R: Read> PeekableReader<R> {
+impl<R: Read + Seek> HybridFileParser<R> {
     pub fn new(read: R) -> Self {
-        return PeekableReader {
+        return HybridFileParser {
             reader: BufReader::new(read),
         };
     }
@@ -103,8 +107,7 @@ impl<R: Read> PeekableReader<R> {
             )
         });
     }
-    fn skip_a_byte(&mut self) {
-        let mut dummy = [0u8; 1];
-        let _ = self.reader.read_exact(dummy.as_mut_slice());
+    pub fn skip_bytes(&mut self, num: i64) -> io::Result<()> {
+        self.reader.seek_relative(num)
     }
 }
