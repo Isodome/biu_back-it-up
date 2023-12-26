@@ -10,6 +10,10 @@ use std::path::{Path, PathBuf};
 pub struct DeduplicationOptions {
     pub deep_compare: bool,
     pub preserve_mtime: bool,
+
+    // The minimum amount of bytest that we must have written in a backup in order to 
+    // trigger the dedup flow.
+    pub min_bytes_for_dedup: u64,
 }
 
 fn log_entry_to_hash(entry: Option<&Result<LogEntry, String>>) -> Option<&str> {
@@ -20,13 +24,12 @@ fn log_entry_to_hash(entry: Option<&Result<LogEntry, String>>) -> Option<&str> {
     };
 }
 
-fn all_hashes_in_backup(backup: &Backup) -> Result<Vec<u64>, String> {
-    let mut all_hashes = Vec::new();
+fn existance_filter_of_written_files(backup: &Backup, num_writes: u64) -> io::Result<CuckooFilter> {
+    let mut cf = cuckoofilter::with_capacity(num_writes);
     for new_file in NewFilesLogIterator::from(backup.log().iter()?) {
-        all_hashes.push(new_file.map_err(|e| "Unable to read the backup log.")?.xxh3);
+        cf.add(new_file?.xxh3);
     }
-    all_hashes.sort();
-    return Ok(all_hashes);
+    return Ok(cf);
 }
 
 pub fn run_deduplication_flow(
@@ -38,10 +41,19 @@ pub fn run_deduplication_flow(
         None => return Ok(()),
         Some(b) => b,
     };
+    let latest_stats = latest_backup.read_stats()?;
 
-    let backups = repo.backups();
+    if latest_stats().num_writes == 0 || 
+       latest_stats().bytes_written < min_bytes_for_dedup {
+        return Ok(());
+    }
 
-    let all_hashes = all_hashes_in_backup(&backup);
+    let prev_backups :Vec<Backup> = repo.backups()[..-1].iter().
+    filter(|backup|backup.read_stats().mtimes().contains(latest_backup.mtimes_written()))
+    .collect();
+
+
+    let all_hashes = existance_filter_of_written_files(&backup);
 
     let mut batch = FileBatch::new();
 
