@@ -3,17 +3,17 @@ use serde::{Deserialize, Serialize};
 #[derive(Deserialize, Serialize)]
 pub struct BackupStats {
     // Stats
-    num_writes: i32,
-    num_hardlinks: i32,
-    num_deletes: i32,
-    bytes_written: u64,
-    bytes_deleted: u64,
-    min_mtime: Option<i64>,
-    max_mtime: Option<i64>,
-    min_mtime_written: Option<i64>,
-    max_mtime_written: Option<i64>,
-    backup_begin_mtime: u64,
-    backup_end_mtime: Option<u64>,
+    pub num_writes: i32,
+    pub num_hardlinks: i32,
+    pub num_deletes: i32,
+    pub bytes_written: u64,
+    pub bytes_deleted: u64,
+    pub min_mtime: Option<i64>,
+    pub max_mtime: Option<i64>,
+    pub min_mtime_written: Option<i64>,
+    pub max_mtime_written: Option<i64>,
+    pub backup_begin_mtime: u64,
+    pub backup_end_mtime: Option<u64>,
 }
 
 impl BackupStats {

@@ -1,4 +1,4 @@
-use crate::repo::{Backup, LogEntry, NewFilesLogIterator, Repo};
+use crate::repo::{Backup, LogEntry, NewFilesLogIterator, Repo, AllFilesLogIterator};
 use crate::runner::Runner;
 use std::collections::HashMap;
 use std::fs::{File, Metadata};
@@ -37,25 +37,59 @@ pub fn run_deduplication_flow(
     opts: &DeduplicationOptions,
     runner: &Runner,
 ) -> Result<(), String> {
-    let latest_backup = match repo.latest_backup() {
-        None => return Ok(()),
-        Some(b) => b,
-    };
-    let latest_stats = latest_backup.read_stats()?;
 
-    if latest_stats().num_writes == 0 || 
-       latest_stats().bytes_written < min_bytes_for_dedup {
+    let (latest_backup, prev_backups )=  match repo.backups().split_last(){
+        Some(bs) => bs,
+        None => return Ok(()),
+    };
+
+    let latest_stats = latest_backup.read_stats().map_err(|e| "Could not read backup stats file.")?;
+
+    if latest_stats.num_writes == 0 || 
+       latest_stats.bytes_written < opts.min_bytes_for_dedup {
         return Ok(());
     }
 
-    let prev_backups :Vec<Backup> = repo.backups()[..-1].iter().
-    filter(|backup|backup.read_stats().mtimes().contains(latest_backup.mtimes_written()))
-    .collect();
+    // We only look at backups that contain files in the mtime range that we need.
 
 
-    let all_hashes = existance_filter_of_written_files(&backup);
 
-    let mut batch = FileBatch::new();
+    let existence_filter = existance_filter_of_written_files(&backup);
+    let candidates = Vex::with_capacity(latest_stats.num_writes);
+
+    // First we read this backup and the last backups files.
+    for file  in AllFilesLogIterator::from(latest_backup.log().iter()?) {
+        if  existence_filter.contains(file?.xxh3) {
+            candidates.push(DedupLogEntry{.key = CompareKey{.mtime = file?.mtime, size = file?.size, hash = file?.xxh3}, .path = file?.path});
+        }
+    }
+
+    let mut remaining_backups :Vec<Backup> = prev_backups;
+    while !candidates.is_empty() {
+        remaining_backups = remaining_backups.iter().
+        filter(|backup|backup.read_stats().mtimes().contains(latest_backup.mtimes_written()))
+        .collect();
+        
+
+        let (remainder, thisBackup)  = match  remaining_backups.split_last(){
+            Some(bs) => bs,
+            None => break,
+        };
+
+        for file  in AllFilesLogIterator::from(thisBackup.log().iter()?) {
+            if  existence_filter.contains(file?.xxh3) {
+                candidates.push(DedupLogEntry{.key = CompareKey{.mtime = file?.mtime, size = file?.size, hash = file?.xxh3}, .path = file?.path});
+            }
+        }
+
+        candidates.sort_by(|a, b| a.key.cmp(b.key));  // Stable sort required!
+
+    
+        
+
+    }
+
+
 
     let mut log_entries = backups[0].log().iter()?.peekable();
     for log_entry in log_entries {
@@ -178,17 +212,13 @@ fn find_all_dups_by_content<'a>(
     return Ok(files.iter().map(|file| file.path).collect());
 }
 
-struct FileBatch {
-    min_hash: String,
-    max_hash: String,
-    hash_to_paths: HashMap<String, Vec<String>>,
+#[derive(PartialEq, PartialOrd)]
+struct CompareKey {
+    mtime: i64,
+    size: u64,
+    hash: u64,
 }
-impl FileBatch {
-    fn new() -> FileBatch {
-        return FileBatch {
-            min_hash: "////////////////".into(),
-            max_hash: "AAAAAAAAAAAAAAAA".into(),
-            hash_to_paths: HashMap::new(),
-        };
-    }
+struct DedupLogEntry {
+    key: CompareKey,
+    path: PathBuf,
 }
