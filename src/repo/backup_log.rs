@@ -45,10 +45,8 @@ impl BackupLog {
         };
     }
 
-    pub fn iter(&self) -> Result<BackupLogIterator, String> {
-        let file = File::open(&self.backup_dir.join("backup.log"))
-            .map_err(|e| format!("Failed to open backup log: {}", e.to_string()))?;
-
+    pub fn iter(&self) -> io::Result<BackupLogIterator> {
+        let file = File::open(&self.backup_dir.join("backup.log"))?;
         return Ok(BackupLogIterator::new(file));
     }
 }
@@ -121,8 +119,8 @@ impl Iterator for BackupLogIterator {
 pub struct AllFilesLogIterator {
     inner: BackupLogIterator,
 }
-impl AllFilesLogIterator {
-    pub fn new(inner: BackupLogIterator) -> AllFilesLogIterator {
+impl From<BackupLogIterator> for AllFilesLogIterator {
+    fn from(inner: BackupLogIterator) -> AllFilesLogIterator {
         return AllFilesLogIterator { inner };
     }
 }

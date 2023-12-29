@@ -101,8 +101,11 @@ pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions) -> Result<(), String> 
     let mut backup_log_writer = target_backup
         .log_writer()
         .map_err(|e| format!("Can't create backup log: {}", e))?;
-    let mut backup_log_reader = AllFilesLogIterator::new(match repo.latest_backup() {
-        Some(backup) => backup.log().iter()?,
+    let mut backup_log_reader = AllFilesLogIterator::from(match repo.latest_backup() {
+        Some(backup) => backup
+            .log()
+            .iter()
+            .map_err(|e| "Unable to open previous backup log.")?,
         None => BackupLogIterator::empty(),
     })
     .peekable();

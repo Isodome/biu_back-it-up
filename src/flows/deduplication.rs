@@ -1,5 +1,14 @@
-use crate::repo::{Backup, LogEntry, NewFilesLogIterator, Repo, AllFilesLogIterator};
+extern crate cuckoofilter;
+
+use cuckoofilter::CuckooFilter;
+
+use crate::repo::{
+    AllFilesLogIterator, Backup, BackupLogPath, LogEntry, NewFilesLogIterator, Repo,
+};
 use crate::runner::Runner;
+use crate::utils::Interval;
+use core::num;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::HashMap;
 use std::fs::{File, Metadata};
 use std::io::{self, BufReader, Bytes, Read};
@@ -11,7 +20,7 @@ pub struct DeduplicationOptions {
     pub deep_compare: bool,
     pub preserve_mtime: bool,
 
-    // The minimum amount of bytest that we must have written in a backup in order to 
+    // The minimum amount of bytest that we must have written in a backup in order to
     // trigger the dedup flow.
     pub min_bytes_for_dedup: u64,
 }
@@ -24,12 +33,63 @@ fn log_entry_to_hash(entry: Option<&Result<LogEntry, String>>) -> Option<&str> {
     };
 }
 
-fn existance_filter_of_written_files(backup: &Backup, num_writes: u64) -> io::Result<CuckooFilter> {
-    let mut cf = cuckoofilter::with_capacity(num_writes);
+fn existance_filter_of_written_files(
+    backup: &Backup,
+    num_writes: i32,
+) -> io::Result<CuckooFilter<DefaultHasher>> {
+    let mut cf = CuckooFilter::with_capacity(num_writes as usize);
     for new_file in NewFilesLogIterator::from(backup.log().iter()?) {
-        cf.add(new_file?.xxh3);
+        cf.add(&new_file?.xxh3);
     }
     return Ok(cf);
+}
+
+fn push_all_matching_files(
+    backup: &Backup,
+    filter: &CuckooFilter<DefaultHasher>,
+    candidates: &mut Vec<DedupLogEntry>,
+    wants_dedup: bool,
+) -> io::Result<()> {
+    for file in AllFilesLogIterator::from(backup.log().iter()?) {
+        if filter.contains(&file?.xxh3) {
+            candidates.push(DedupLogEntry {
+                key: CompareKey {
+                    mtime: file?.mtime,
+                    size: file?.size,
+                    hash: file?.xxh3,
+                },
+                wants_dedup,
+                path: file?.path,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn reduce_set_of_backups<'a>(
+    backups: &[&'a Backup],
+    relevant_mtimes: &Interval<i64>,
+) -> Vec<&'a Backup> {
+    backups
+        .iter()
+        .filter(|&&backup| {
+            match backup.read_stats() {
+                Ok(s) => return s.mtimes().overlaps(relevant_mtimes),
+                Err(_) => return true,
+            };
+        })
+        .cloned()
+        .collect()
+}
+
+fn written_mtimes(candidates: &[DedupLogEntry]) -> Interval<i64> {
+    let mut interval = Interval { hi: 0, lo: -1 };
+    for candidate in candidates {
+        if candidate.wants_dedup {
+            interval.expand(candidate.key.mtime);
+        }
+    }
+    return interval;
 }
 
 pub fn run_deduplication_flow(
@@ -37,62 +97,59 @@ pub fn run_deduplication_flow(
     opts: &DeduplicationOptions,
     runner: &Runner,
 ) -> Result<(), String> {
-
-    let (latest_backup, prev_backups )=  match repo.backups().split_last(){
+    let (latest_backup, prev_backups) = match repo.backups().split_last() {
         Some(bs) => bs,
         None => return Ok(()),
     };
 
-    let latest_stats = latest_backup.read_stats().map_err(|e| "Could not read backup stats file.")?;
+    let latest_stats = latest_backup
+        .read_stats()
+        .map_err(|e| "Could not read backup stats file.")?;
 
-    if latest_stats.num_writes == 0 || 
-       latest_stats.bytes_written < opts.min_bytes_for_dedup {
+    if latest_stats.num_writes == 0 || latest_stats.bytes_written < opts.min_bytes_for_dedup {
         return Ok(());
     }
 
     // We only look at backups that contain files in the mtime range that we need.
 
-
-
-    let existence_filter = existance_filter_of_written_files(&backup);
-    let candidates = Vex::with_capacity(latest_stats.num_writes);
+    let existence_filter = existance_filter_of_written_files(&latest_backup, latest_stats.num_writes).map_err(|e|"Unable to read backup log during deduplication. The backup should be complete but not deduplicated.")?;
+    let mut candidates = Vec::with_capacity(latest_stats.num_writes as usize);
 
     // First we read this backup and the last backups files.
-    for file  in AllFilesLogIterator::from(latest_backup.log().iter()?) {
-        if  existence_filter.contains(file?.xxh3) {
-            candidates.push(DedupLogEntry{.key = CompareKey{.mtime = file?.mtime, size = file?.size, hash = file?.xxh3}, .path = file?.path});
-        }
-    }
+    push_all_matching_files(latest_backup, &existence_filter, &mut candidates, true);
 
-    let mut remaining_backups :Vec<Backup> = prev_backups;
+    let mut remaining_backups: Vec<&Backup> = prev_backups.iter().collect();
+    let mut remaining_backups: Vec<&Backup> =
+        reduce_set_of_backups(&remaining_backups, &latest_stats.mtimes_written());
     while !candidates.is_empty() {
-        remaining_backups = remaining_backups.iter().
-        filter(|backup|backup.read_stats().mtimes().contains(latest_backup.mtimes_written()))
-        .collect();
-        
-
-        let (remainder, thisBackup)  = match  remaining_backups.split_last(){
-            Some(bs) => bs,
-            None => break,
-        };
-
-        for file  in AllFilesLogIterator::from(thisBackup.log().iter()?) {
-            if  existence_filter.contains(file?.xxh3) {
-                candidates.push(DedupLogEntry{.key = CompareKey{.mtime = file?.mtime, size = file?.size, hash = file?.xxh3}, .path = file?.path});
-            }
+        let split = remaining_backups.split_last();
+        if let Some((this_backup, _)) = split {
+            push_all_matching_files(this_backup, &existence_filter, &mut candidates, false);
         }
 
-        candidates.sort_by(|a, b| a.key.cmp(b.key));  // Stable sort required!
+        candidates.sort_unstable_by(|a, b| {
+            a.key
+                .cmp(&b.key)
+                .then_with(|| a.wants_dedup.cmp(&b.wants_dedup))
+        });
 
-    
-        
+        // dedup and delete
+        candidates = dedup_and_delete(candidates);
 
+        // compute mtimes interval
+        let mtimes = written_mtimes(&candidates);
+        match split {
+            Some((_, remainder)) => {
+                remaining_backups = reduce_set_of_backups(remainder, &latest_stats.mtimes_written())
+            }
+            None => break,
+        }
     }
+    Ok(())
+}
 
-
-
-    let mut log_entries = backups[0].log().iter()?.peekable();
-    for log_entry in log_entries {
+fn dedup_and_delete (sorted_candidates: Vec<DedupLogEntry>) -> Vec<DedupLogEntry> {
+    for log_entry in sorted_candidates {
         match log_entry? {
             LogEntry::Write(data) => {
                 batch.hash_to_paths[&data.xxh3].push(data.path);
@@ -212,13 +269,15 @@ fn find_all_dups_by_content<'a>(
     return Ok(files.iter().map(|file| file.path).collect());
 }
 
-#[derive(PartialEq, PartialOrd)]
+#[derive(PartialEq, PartialOrd, Eq, Ord)]
 struct CompareKey {
     mtime: i64,
     size: u64,
     hash: u64,
 }
 struct DedupLogEntry {
-    key: CompareKey,
-    path: PathBuf,
+    key: CompareKey, // Reduce
+
+    wants_dedup: bool,
+    path: BackupLogPath,
 }

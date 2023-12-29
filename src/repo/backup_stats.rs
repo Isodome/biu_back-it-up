@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::utils::Interval;
+
 #[derive(Deserialize, Serialize)]
 pub struct BackupStats {
     // Stats
@@ -42,7 +44,7 @@ impl BackupStats {
         self.min_mtime = std::cmp::min(self.min_mtime.or(as_opt), as_opt);
         self.max_mtime = std::cmp::max(self.max_mtime.or(as_opt), as_opt);
     }
-    
+
     pub fn update_mtime_written(&mut self, mtime: i64) {
         let as_opt = Some(mtime);
         self.min_mtime_written = std::cmp::min(self.min_mtime_written.or(as_opt), as_opt);
@@ -74,10 +76,16 @@ impl BackupStats {
     }
 
     pub fn mtimes(&self) -> Interval<i64> {
-        return Interval{lo: self.min_mtime.unwrap_or(1), hi: self.max_mtime.unwrap_or(0)};
+        return Interval {
+            lo: self.min_mtime.unwrap_or(1),
+            hi: self.max_mtime.unwrap_or(0),
+        };
     }
     pub fn mtimes_written(&self) -> Interval<i64> {
-        return Interval{lo: self.min_mtime_written.unwrap_or(1), hi: self.max_mtime_written.unwrap_or(0)};
+        return Interval {
+            lo: self.min_mtime_written.unwrap_or(1),
+            hi: self.max_mtime_written.unwrap_or(0),
+        };
     }
 
     pub fn as_toml(&self) -> String {
