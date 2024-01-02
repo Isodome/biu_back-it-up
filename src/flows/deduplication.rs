@@ -2,15 +2,12 @@ extern crate cuckoofilter;
 
 use cuckoofilter::CuckooFilter;
 
-use crate::repo::{
-    AllFilesLogIterator, Backup, BackupLogPath, LogEntry, NewFilesLogIterator, Repo,
-};
+use crate::repo::{AllFilesLogIterator, Backup, NewFilesLogIterator, Repo};
 use crate::runner::Runner;
 use crate::utils::Interval;
-use core::num;
+
 use std::collections::hash_map::DefaultHasher;
-use std::collections::HashMap;
-use std::fs::{File, Metadata};
+use std::fs::File;
 use std::io::{self, BufReader, Bytes, Read};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
@@ -23,14 +20,6 @@ pub struct DeduplicationOptions {
     // The minimum amount of bytest that we must have written in a backup in order to
     // trigger the dedup flow.
     pub min_bytes_for_dedup: u64,
-}
-
-fn log_entry_to_hash(entry: Option<&Result<LogEntry, String>>) -> Option<&str> {
-    let log_entry = entry?.as_ref().ok()?;
-    return match log_entry {
-        LogEntry::Write(data) => Some(data.xxh3),
-        _ => None,
-    };
 }
 
 fn existance_filter_of_written_files(
@@ -51,15 +40,16 @@ fn push_all_matching_files(
     wants_dedup: bool,
 ) -> io::Result<()> {
     for file in AllFilesLogIterator::from(backup.log().iter()?) {
-        if filter.contains(&file?.xxh3) {
+        let file = &file?;
+        if filter.contains(&file.xxh3) {
             candidates.push(DedupLogEntry {
                 key: CompareKey {
-                    mtime: file?.mtime,
-                    size: file?.size,
-                    hash: file?.xxh3,
+                    mtime: file.mtime,
+                    size: file.size,
+                    hash: file.xxh3,
                 },
                 wants_dedup,
-                path: file?.path,
+                abs_path: file.path.path_in_backup(backup),
             });
         }
     }
@@ -134,7 +124,7 @@ pub fn run_deduplication_flow(
         });
 
         // dedup and delete
-        candidates = dedup_and_delete(candidates);
+        candidates = dedup_and_delete(candidates, opts, runner);
 
         // compute mtimes interval
         let mtimes = written_mtimes(&candidates);
@@ -148,67 +138,80 @@ pub fn run_deduplication_flow(
     Ok(())
 }
 
-fn dedup_and_delete (sorted_candidates: Vec<DedupLogEntry>) -> Vec<DedupLogEntry> {
-    for log_entry in sorted_candidates {
-        match log_entry? {
-            LogEntry::Write(data) => {
-                batch.hash_to_paths[&data.xxh3].push(data.path);
-            }
-            LogEntry::Unparseable(_) => todo!(),
-            _ => {}
+fn dedup_and_delete(
+    mut sorted_candidates: Vec<DedupLogEntry>,
+    opts: &DeduplicationOptions,
+    runner: &Runner,
+) -> Vec<DedupLogEntry> {
+    let mut write_index: usize = 0;
+    let mut group: Vec<DedupLogEntry> = Vec::new();
+
+    for log_entry in sorted_candidates.into_iter() {
+        if group.is_empty() || log_entry.key == group[0].key {
+            group.push(log_entry);
+            continue;
         }
-        if batch.hash_to_paths.len() > 1000 {
-            if let Some(next_hash) = log_entry_to_hash(log_entries.peek()) {
-                if batch.hash_to_paths.contains_key(&next_hash) {
-                    // The batch is full, however there are more entries with the same hash.
-                    continue;
-                }
+
+        let first = group.first().unwrap();
+        let last = group.last().unwrap();
+        if !first.wants_dedup && !last.wants_dedup {
+            // We have a group of old files from previous backups. These are probably false positives from the existence filter. We can safely discard them.
+            continue;
+        } else if first.wants_dedup && last.wants_dedup {
+            // We have a group of new files that but nothing to dedup against.
+            for entry in group {
+                sorted_candidates[write_index] = entry;;
+                write_index += 1;
             }
-            for (_, paths) in batch.hash_to_paths.iter() {
-                let absolute_paths = paths
-                    .iter()
-                    .map(|path| backups[0].abs_path(&path))
-                    .collect::<Vec<PathBuf>>();
-                let status = maybe_dedup_files(absolute_paths, opts, runner);
-                if let Err(e) = status {
-                    runner.commentln(format!(
-                        "Failure while trying to eliminate duplicates: {:?}: {}",
-                        paths, e
-                    ));
-                }
+        } else {
+            // Lets dedup
+            assert!(!first.wants_dedup, "This is a bug and should never happen");
+            let absolute_paths:Vec<&Path>= group[1..]
+                .iter()
+                .filter(|entry| entry.wants_dedup)
+                .map(|entry| entry.abs_path.as_path())
+                .collect();
+            let status = maybe_dedup_files(&first.abs_path, &absolute_paths, opts, runner);
+            if let Err(e) = status {
+                runner.commentln(format!(
+                    "Failure while trying to eliminate duplicates: {:?}: {}",
+                    &absolute_paths, e
+                ));
             }
         }
+        group.clear();
     }
-
-    Ok(())
-}
-
-fn as_path_refs(pathbufs: &Vec<PathBuf>) -> Vec<&Path> {
-    return pathbufs.iter().map(|pathbuf| pathbuf.as_path()).collect();
+    sorted_candidates.truncate(write_index);
+    sorted_candidates
 }
 
 fn maybe_dedup_files(
-    duplicates: Vec<PathBuf>,
+    original: &Path,
+    duplicate_candidates: &[&Path],
     opts: &DeduplicationOptions,
     runner: &Runner,
 ) -> io::Result<()> {
-    if duplicates.len() < 2 {
+    if duplicate_candidates.is_empty() {
         return Ok(());
     }
 
-    let mut duplicate_candidates = as_path_refs(&duplicates);
-    while duplicate_candidates.len() > 1 {
-        let true_dups =
-            find_all_real_dups(&duplicate_candidates[0], &duplicate_candidates[1..], opts)?;
-        for true_dup in &true_dups {
-            runner.replace_file_with_link(&duplicate_candidates[0], true_dup)
-        }
-        if true_dups.len() == duplicate_candidates.len() - 1 {
-            // In case all dups by hash are true dups (so almost always) we can take this shortcut.
-            return Ok(());
-        }
-        duplicate_candidates.remove(0);
-        duplicate_candidates.retain(|path| !true_dups.contains(&path.as_ref()));
+    // Note: By default we assume everythin with equal mtime, size and hash is a dupe. The
+    // use may chose to do a deep compare. In case we'll indeed encounter a false positive
+    // (same hash, different content), we simply won't dedup the remaining files here.
+    let true_dups = find_all_real_dups(original, duplicate_candidates, opts)?;
+    for true_dup in &true_dups {
+        runner.replace_file_with_link(duplicate_candidates[0], true_dup)
+    }
+    if true_dups.len() != duplicate_candidates.len() {
+        runner.commentln(format!(
+            "We found dups in the backup logs but the underlying files either weren't readable or the content didn't match.
+            Original file: {:?} 
+            Duplicates: {:?}
+            Candidates: {:?}",
+            original.display(),
+            true_dups,
+            duplicate_candidates
+        ));
     }
     return Ok(());
 }
@@ -222,7 +225,10 @@ fn find_all_real_dups<'b>(
     let stat_original = std::fs::symlink_metadata(original)?;
 
     true_dups.retain(|path| {
-        let stat_duplicate = std::fs::symlink_metadata(path).expect("");
+        let stat_duplicate = match std::fs::symlink_metadata(path) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
         return stat_duplicate.size() == stat_duplicate.size()
             && (!opts.preserve_mtime || stat_original.mtime() != stat_duplicate.mtime());
     });
@@ -279,5 +285,5 @@ struct DedupLogEntry {
     key: CompareKey, // Reduce
 
     wants_dedup: bool,
-    path: BackupLogPath,
+    abs_path: PathBuf,
 }
