@@ -143,9 +143,8 @@ fn dedup_and_delete(
     opts: &DeduplicationOptions,
     runner: &Runner,
 ) -> Vec<DedupLogEntry> {
-    let mut write_index: usize = 0;
     let mut group: Vec<DedupLogEntry> = Vec::new();
-
+    let mut remaining_candidates: Vec<DedupLogEntry> = Vec::new();
     for log_entry in sorted_candidates.into_iter() {
         if group.is_empty() || log_entry.key == group[0].key {
             group.push(log_entry);
@@ -159,14 +158,11 @@ fn dedup_and_delete(
             continue;
         } else if first.wants_dedup && last.wants_dedup {
             // We have a group of new files that but nothing to dedup against.
-            for entry in group {
-                sorted_candidates[write_index] = entry;;
-                write_index += 1;
-            }
+            remaining_candidates.append(group);
         } else {
             // Lets dedup
             assert!(!first.wants_dedup, "This is a bug and should never happen");
-            let absolute_paths:Vec<&Path>= group[1..]
+            let absolute_paths: Vec<&Path> = group[1..]
                 .iter()
                 .filter(|entry| entry.wants_dedup)
                 .map(|entry| entry.abs_path.as_path())
@@ -181,8 +177,7 @@ fn dedup_and_delete(
         }
         group.clear();
     }
-    sorted_candidates.truncate(write_index);
-    sorted_candidates
+    remaining_candidates
 }
 
 fn maybe_dedup_files(
