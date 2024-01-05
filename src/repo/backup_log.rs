@@ -242,7 +242,7 @@ impl BackupLogWriter {
 
     pub fn report_delete(&mut self, path: &BackupLogPath, size: u64) -> io::Result<()> {
         self.stats.report_delete(size);
-        self.writeline("d", path, 0, 0, 0)
+        self.writeline("d", path, 0, 0, size)
     }
 }
 
@@ -333,7 +333,7 @@ mod test {
 
         assert_eq!(
             it.next().unwrap()?,
-            LogEntry::Write(BackupFileStats {
+            LogEntry::Link(BackupFileStats {
                 size: 890,
                 xxh3: 234,
                 mtime: 567,

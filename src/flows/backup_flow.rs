@@ -75,7 +75,7 @@ fn prepare_sources(sources: &[PathBuf]) -> Result<Vec<BackupSource>, String> {
 }
 
 /// Make a non-deduped backup.
-pub fn run_backup_flow(repo: &Repo, opts: &BackupOptions) -> Result<(), String> {
+pub fn run_backup_flow_internal(repo: &Repo, opts: &BackupOptions) -> Result<(), String> {
     let target_backup = Backup::new_backup_now(&repo.path());
     if target_backup.path().is_dir() {
         return Err(String::from("Backup path already exists"));

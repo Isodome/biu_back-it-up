@@ -1,16 +1,12 @@
 mod flows;
 mod repo;
-mod retention_plan;
-mod runner;
 mod utils;
 
-// use flows::DeduplicationOptions;
-use repo::Repo;
-use retention_plan::RetentionPlan;
-use runner::Runner;
-use std::{path::PathBuf, process};
-
+use biu::{
+    run_backup_flow, run_cleanup_flow, BackupFlowOptions, CleanupFlowOptions, RetentionPlan,
+};
 use clap::{Args, Parser, Subcommand};
+use std::{path::PathBuf, process};
 
 // ---------- Shared Arguments -----------
 #[derive(Args)]
@@ -84,36 +80,26 @@ struct ScrubArgs {
 fn run() -> Result<(), String> {
     let cli = Cli::parse();
 
-    let runner = Runner { verbose: true };
-
     match &cli.command {
         Commands::Backup(args) => {
-            let backup_opts = flows::BackupOptions {
-                source_paths: &args.source_paths,
-                backup_path: &args.backup_path.backup_path,
+            let opts = BackupFlowOptions {
+                initialize: args.initialize,
+                source_paths: args.source_paths.clone(),
+                backup_path: args.backup_path.backup_path.clone(),
                 archive_mode: false,
+                deep_compare: true,
+                preserve_mtime: false,
+                min_bytes_for_dedup: 0,
             };
-            let repo = Repo::from(&backup_opts.backup_path, args.initialize)?;
-
-            return flows::run_backup_flow(&repo, &backup_opts);
-            // return flows::run_deduplication_flow(
-            //     &Repo::existing(&backup_opts.backup_path)?,
-            //     &DeduplicationOptions {
-            //         deep_compare: true,
-            //         preserve_mtime: false,
-            //     },
-            //     &runner,
-            // );
+            run_backup_flow(opts)
         }
         Commands::Cleanup(args) => {
-            let cleanup_opts = flows::CleanupOptions {
+            let cleanup_opts = CleanupFlowOptions {
                 backup_path: &args.backup_path.backup_path,
                 retention_plan: &args.retention_plan.retention_plan,
                 force_delete: args.force_delete,
             };
-            let repo = Repo::existing(&cleanup_opts.backup_path)?;
-
-            return flows::run_cleanup_flow(repo, cleanup_opts, &runner);
+            run_cleanup_flow(cleanup_opts)
         }
         _ => panic!("Unkown command"),
     }

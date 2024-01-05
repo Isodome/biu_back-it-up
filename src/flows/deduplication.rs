@@ -3,8 +3,7 @@ extern crate cuckoofilter;
 use cuckoofilter::CuckooFilter;
 
 use crate::repo::{AllFilesLogIterator, Backup, NewFilesLogIterator, Repo};
-use crate::runner::Runner;
-use crate::utils::Interval;
+use crate::utils::{Interval, Runner};
 
 use std::collections::hash_map::DefaultHasher;
 use std::fs::File;
@@ -12,7 +11,6 @@ use std::io::{self, BufReader, Bytes, Read};
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
-#[derive()]
 pub struct DeduplicationOptions {
     pub deep_compare: bool,
     pub preserve_mtime: bool,
@@ -76,7 +74,7 @@ fn written_mtimes(candidates: &[DedupLogEntry]) -> Interval<i64> {
     let mut interval = Interval { hi: 0, lo: -1 };
     for candidate in candidates {
         if candidate.wants_dedup {
-            interval.expand(candidate.key.mtime);
+            interval.expand(&candidate.key.mtime);
         }
     }
     return interval;
@@ -102,7 +100,7 @@ pub fn run_deduplication_flow(
 
     // We only look at backups that contain files in the mtime range that we need.
 
-    let existence_filter = existance_filter_of_written_files(&latest_backup, latest_stats.num_writes).map_err(|e|"Unable to read backup log during deduplication. The backup should be complete but not deduplicated.")?;
+    let existence_filter = existance_filter_of_written_files(&latest_backup, latest_stats.num_writes).map_err(|_|"Unable to read backup log during deduplication. The backup should be complete but not deduplicated.")?;
     let mut candidates = Vec::with_capacity(latest_stats.num_writes as usize);
 
     // First we read this backup and the last backups files.
@@ -139,7 +137,7 @@ pub fn run_deduplication_flow(
 }
 
 fn dedup_and_delete(
-    mut sorted_candidates: Vec<DedupLogEntry>,
+    sorted_candidates: Vec<DedupLogEntry>,
     opts: &DeduplicationOptions,
     runner: &Runner,
 ) -> Vec<DedupLogEntry> {
@@ -151,33 +149,59 @@ fn dedup_and_delete(
             continue;
         }
 
-        let first = group.first().unwrap();
-        let last = group.last().unwrap();
-        if !first.wants_dedup && !last.wants_dedup {
-            // We have a group of old files from previous backups. These are probably false positives from the existence filter. We can safely discard them.
-            continue;
-        } else if first.wants_dedup && last.wants_dedup {
-            // We have a group of new files that but nothing to dedup against.
-            remaining_candidates.append(group);
-        } else {
-            // Lets dedup
-            assert!(!first.wants_dedup, "This is a bug and should never happen");
-            let absolute_paths: Vec<&Path> = group[1..]
-                .iter()
-                .filter(|entry| entry.wants_dedup)
-                .map(|entry| entry.abs_path.as_path())
-                .collect();
-            let status = maybe_dedup_files(&first.abs_path, &absolute_paths, opts, runner);
-            if let Err(e) = status {
-                runner.commentln(format!(
-                    "Failure while trying to eliminate duplicates: {:?}: {}",
-                    &absolute_paths, e
-                ));
-            }
+        match dedup_group(&mut group, opts, runner) {
+            DeduplicationResult::NeedsDeduplication => remaining_candidates.append(&mut group),
+            DeduplicationResult::Done => group.clear(),
         }
-        group.clear();
+        group.push(log_entry);
     }
+    if dedup_group(&mut group, opts, runner) == DeduplicationResult::NeedsDeduplication {
+        remaining_candidates.append(&mut group);
+    }
+
     remaining_candidates
+}
+
+#[derive(PartialEq)]
+enum DeduplicationResult {
+    // The files are handled and we can move on.
+    Done,
+    // We need to keep looking for an original for this group of files.
+    NeedsDeduplication,
+}
+fn dedup_group(
+    group: &mut Vec<DedupLogEntry>,
+    opts: &DeduplicationOptions,
+    runner: &Runner,
+) -> DeduplicationResult {
+    if group.is_empty() {
+        return DeduplicationResult::Done;
+    }
+
+    let first = group.first().unwrap();
+    let last = group.last().unwrap();
+    if !first.wants_dedup && !last.wants_dedup {
+        // We have a group of old files from previous backups. These are probably false positives from the existence filter. We can safely discard them.
+        return DeduplicationResult::Done;
+    } else if first.wants_dedup && last.wants_dedup {
+        // We have a group of new files but nothing to dedup against. So we keep it.
+        return DeduplicationResult::NeedsDeduplication;
+    }
+    // Lets dedup
+    assert!(!first.wants_dedup, "This is a bug and should never happen.");
+    let absolute_paths: Vec<&Path> = group[1..]
+        .iter()
+        .filter(|entry| entry.wants_dedup)
+        .map(|entry| entry.abs_path.as_path())
+        .collect();
+    let status = maybe_dedup_files(&first.abs_path, &absolute_paths, opts, runner);
+    if let Err(e) = status {
+        runner.commentln(format!(
+            "Failure while trying to eliminate duplicates: {:?}: {}",
+            &absolute_paths, e
+        ));
+    }
+    return DeduplicationResult::Done;
 }
 
 fn maybe_dedup_files(

@@ -3,17 +3,17 @@ pub struct Interval<T> {
     pub hi: T,
 }
 
-impl<T: PartialOrd> Interval<T> {
+impl<T: PartialOrd + Clone> Interval<T> {
     pub fn is_empty(&self) -> bool {
         return self.lo > self.hi;
     }
 
-    pub fn expand(&mut self, val: T) {
-        if val > self.hi {
-            self.hi = val;
+    pub fn expand(&mut self, val: &T) {
+        if val > &self.hi {
+            self.hi = val.clone();
         }
-        if val < self.lo {
-            self.lo = val;
+        if val < &self.lo {
+            self.lo = val.clone();
         }
     }
 

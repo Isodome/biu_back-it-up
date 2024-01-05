@@ -1,8 +1,5 @@
-use crate::repo::{Backup, Repo};
-use crate::retention_plan::RetentionPlan;
-use crate::Runner;
+use crate::{repo::{Backup, Repo, RetentionPlan}, utils::Runner};
 use chrono::prelude::*;
-
 use std::path::Path;
 
 #[derive(Debug)]
@@ -64,7 +61,7 @@ fn determine_backups_to_keep(
     }
 }
 
-pub fn run_cleanup_flow(repo: Repo, opts: CleanupOptions, runner: &Runner) -> Result<(), String> {
+pub fn run_cleanup_flow_int(repo: Repo, opts: CleanupOptions, runner: &Runner) -> Result<(), String> {
     if repo.num_backups() < 2 {
         runner.commentln("Less than 2 backups were found. We can't cleanup anything.");
         return Ok(());
