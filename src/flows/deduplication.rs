@@ -35,18 +35,19 @@ fn push_all_matching_files(
     backup: &Backup,
     filter: &CuckooFilter<DefaultHasher>,
     candidates: &mut Vec<DedupLogEntry>,
-    wants_dedup: bool,
+    opts: &DeduplicationOptions,
+    set_wants_dedup: bool,
 ) -> io::Result<()> {
     for file in AllFilesLogIterator::from(backup.log().iter()?) {
         let file = &file?;
         if filter.contains(&file.xxh3) {
             candidates.push(DedupLogEntry {
                 key: CompareKey {
-                    mtime: file.mtime,
+                    mtime: if opts.preserve_mtime { file.mtime } else { 0 },
                     size: file.size,
                     hash: file.xxh3,
                 },
-                wants_dedup,
+                wants_dedup: set_wants_dedup,
                 abs_path: file.path.path_in_backup(backup),
             });
         }
@@ -104,7 +105,13 @@ pub fn run_deduplication_flow(
     let mut candidates = Vec::with_capacity(latest_stats.num_writes as usize);
 
     // First we read this backup and the last backups files.
-    push_all_matching_files(latest_backup, &existence_filter, &mut candidates, true);
+    push_all_matching_files(
+        latest_backup,
+        &existence_filter,
+        &mut candidates,
+        &opts,
+        true,
+    );
 
     let mut remaining_backups: Vec<&Backup> = prev_backups.iter().collect();
     let mut remaining_backups: Vec<&Backup> =
@@ -112,7 +119,13 @@ pub fn run_deduplication_flow(
     while !candidates.is_empty() {
         let split = remaining_backups.split_last();
         if let Some((this_backup, _)) = split {
-            push_all_matching_files(this_backup, &existence_filter, &mut candidates, false);
+            push_all_matching_files(
+                this_backup,
+                &existence_filter,
+                &mut candidates,
+                &opts,
+                false,
+            );
         }
 
         candidates.sort_unstable_by(|a, b| {
@@ -149,13 +162,13 @@ fn dedup_and_delete(
             continue;
         }
 
-        match dedup_group(&mut group, opts, runner) {
+        match dedup_group(&mut group, false, opts, runner) {
             DeduplicationResult::NeedsDeduplication => remaining_candidates.append(&mut group),
             DeduplicationResult::Done => group.clear(),
         }
         group.push(log_entry);
     }
-    if dedup_group(&mut group, opts, runner) == DeduplicationResult::NeedsDeduplication {
+    if dedup_group(&mut group, true, opts, runner) == DeduplicationResult::NeedsDeduplication {
         remaining_candidates.append(&mut group);
     }
 
@@ -171,6 +184,7 @@ enum DeduplicationResult {
 }
 fn dedup_group(
     group: &mut Vec<DedupLogEntry>,
+    final_run: bool,
     opts: &DeduplicationOptions,
     runner: &Runner,
 ) -> DeduplicationResult {
@@ -183,12 +197,15 @@ fn dedup_group(
     if !first.wants_dedup && !last.wants_dedup {
         // We have a group of old files from previous backups. These are probably false positives from the existence filter. We can safely discard them.
         return DeduplicationResult::Done;
-    } else if first.wants_dedup && last.wants_dedup {
+    } else if !final_run && !first.wants_dedup && last.wants_dedup {
         // We have a group of new files but nothing to dedup against. So we keep it.
         return DeduplicationResult::NeedsDeduplication;
     }
     // Lets dedup
-    assert!(!first.wants_dedup, "This is a bug and should never happen.");
+    assert!(
+        final_run || !first.wants_dedup,
+        "This is a bug and should never happen."
+    );
     let absolute_paths: Vec<&Path> = group[1..]
         .iter()
         .filter(|entry| entry.wants_dedup)
@@ -219,7 +236,7 @@ fn maybe_dedup_files(
     // (same hash, different content), we simply won't dedup the remaining files here.
     let true_dups = find_all_real_dups(original, duplicate_candidates, opts)?;
     for true_dup in &true_dups {
-        runner.replace_file_with_link(duplicate_candidates[0], true_dup)
+        runner.replace_file_with_link(original, true_dup)
     }
     if true_dups.len() != duplicate_candidates.len() {
         runner.commentln(format!(

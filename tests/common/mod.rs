@@ -38,9 +38,12 @@ impl TestFixture {
         }
     }
 
-    pub fn source_dir(&self) -> &Path {
+    pub fn source_path(&self) -> &Path {
         assert_eq!(self.source_dirs.len(), 1);
         &self.source_dirs[0]
+    }
+    pub fn source_dir_name(&self) -> &str {
+        self.source_path().file_name().unwrap().to_str().unwrap()
     }
 }
 

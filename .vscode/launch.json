@@ -1,9 +1,25 @@
 {
-    // Use IntelliSense to learn about possible attributes.
-    // Hover to view descriptions of existing attributes.
-    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'biu'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=biu"
+                ],
+                "filter": {
+                    "name": "biu",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
         {
             "type": "lldb",
             "request": "launch",
@@ -19,12 +35,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [
-                "backup",
-                "--backup-path=/tmp/biu",
-                "--source-paths=/home/dominic/Downloads",
-                // "--initialize"
-            ],
+            "args": [],
             "cwd": "${workspaceFolder}"
         },
         {
@@ -41,6 +52,44 @@
                 "filter": {
                     "name": "biu",
                     "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'backup_simple_cases'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=backup_simple_cases",
+                    "--package=biu"
+                ],
+                "filter": {
+                    "name": "backup_simple_cases",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'backup_dedup'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=backup_dedup",
+                    "--package=biu"
+                ],
+                "filter": {
+                    "name": "backup_dedup",
+                    "kind": "test"
                 }
             },
             "args": [],
