@@ -101,7 +101,7 @@ impl Backup {
     fn stats_path(&self) -> PathBuf {
         return self.path.join("backup.stats");
     }
-   pub fn read_stats(&self) -> std::io::Result<BackupStats> {
+    pub fn read_stats(&self) -> std::io::Result<BackupStats> {
         return Ok(BackupStats::from_toml(&std::fs::read_to_string(
             self.stats_path(),
         )?));
