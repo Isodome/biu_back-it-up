@@ -44,15 +44,6 @@ fn dedup_agaist_old_backup() {
         ..f.backup_flow_options()
     })
     .unwrap();
-    // Predate the backup
-    let old_time_stamp = (chrono::Local::now() - chrono::Duration::days(1))
-        .format("%Y-%m-%d_%H-%M")
-        .to_string();
-    std::fs::rename(
-        most_recent_backup(&backup_dir),
-        most_recent_backup(&backup_dir).with_file_name(old_time_stamp),
-    )
-    .unwrap();
 
     // Backup 2
     write_files(
@@ -71,14 +62,23 @@ fn dedup_agaist_old_backup() {
     .unwrap();
 
     // Check that the backup is correct.
-    let newest_backup = most_recent_backup(&backup_dir).join(f.source_dir_name());
-    file_trees_equal(f.source_path(), &newest_backup);
+    let backup_0 = most_recent_backup(&backup_dir).join(f.source_dir_name());
+    file_trees_equal(f.source_path(), &backup_0);
 
     // Check that we didnt'accidentially hardlink the backup to the original.
+    let backup_m1 = nth_last_backup(&backup_dir, 1).join(f.source_dir_name());
     let hardlinks = find_all_hardlinks(&backup_dir);
     assert_eq!(hardlinks.len(), 2);
     assert_eq!(
         hardlinks[0],
-        vec![newest_backup.join("a.txt"), newest_backup.join("b/b.foo")]
+        vec![
+            backup_m1.join("a.txt"),
+            backup_0.join("a/a.foo"),
+            backup_0.join("a.txt")
+        ]
+    );
+    assert_eq!(
+        hardlinks[1],
+        vec![backup_0.join("b/c.foo"), backup_0.join("c.orig")]
     );
 }

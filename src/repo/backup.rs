@@ -65,7 +65,7 @@ impl Backup {
             return None;
         }
         let dir_name = pathbuf.file_name()?.to_str()?;
-        let time_from_dir = NaiveDateTime::parse_from_str(dir_name, "%Y-%m-%d_%H-%M").ok()?;
+        let time_from_dir = NaiveDateTime::parse_from_str(&dir_name[..16], "%Y-%m-%d_%H-%M").ok()?;
 
         return Some(Backup {
             path: pathbuf,
@@ -75,8 +75,16 @@ impl Backup {
 
     pub fn new_backup_now(repo_path: &Path) -> Self {
         let now = chrono::Local::now();
-        let mut new_path = PathBuf::from(repo_path);
-        new_path.push(now.format("%Y-%m-%d_%H-%M").to_string());
+        let now_string = now.format("%Y-%m-%d_%H-%M").to_string();
+        let mut new_path = repo_path.join(&now_string);
+        let mut i = 1;
+        loop {
+            if !new_path.exists() {
+                break;
+            }
+            new_path = repo_path.join(format!("{}_{}", now_string, i));
+            i += 1;
+        }
         Self {
             path: new_path,
             creation_time: now,

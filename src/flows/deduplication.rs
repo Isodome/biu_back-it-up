@@ -38,8 +38,15 @@ fn push_all_matching_files(
     opts: &DeduplicationOptions,
     set_wants_dedup: bool,
 ) -> io::Result<()> {
-    for file in AllFilesLogIterator::from(backup.log().iter()?) {
-        let file = &file?;
+    for log_entry in backup.log().iter()? {
+        let log_entry = &log_entry?;
+
+        let (file, write) = match log_entry {
+            crate::repo::LogEntry::Write(wd) => (wd, true),
+            crate::repo::LogEntry::Link(wd) => (wd, false),
+            crate::repo::LogEntry::Delete(_) => continue,
+        };
+
         if filter.contains(&file.xxh3) {
             candidates.push(DedupLogEntry {
                 key: CompareKey {
@@ -47,7 +54,7 @@ fn push_all_matching_files(
                     size: file.size,
                     hash: file.xxh3,
                 },
-                wants_dedup: set_wants_dedup,
+                wants_dedup: write && set_wants_dedup,
                 abs_path: file.path.path_in_backup(backup),
             });
         }
@@ -86,12 +93,12 @@ pub fn run_deduplication_flow(
     opts: &DeduplicationOptions,
     runner: &Runner,
 ) -> Result<(), String> {
-    let (latest_backup, prev_backups) = match repo.backups().split_last() {
+    let (backup_0, prev_backups) = match repo.backups().split_last() {
         Some(bs) => bs,
         None => return Ok(()),
     };
 
-    let latest_stats = latest_backup
+    let latest_stats = backup_0
         .read_stats()
         .map_err(|e| "Could not read backup stats file.")?;
 
@@ -101,31 +108,22 @@ pub fn run_deduplication_flow(
 
     // We only look at backups that contain files in the mtime range that we need.
 
-    let existence_filter = existance_filter_of_written_files(&latest_backup, latest_stats.num_writes).map_err(|_|"Unable to read backup log during deduplication. The backup should be complete but not deduplicated.")?;
+    let existence_filter = existance_filter_of_written_files(&backup_0, latest_stats.num_writes).map_err(|_|"Unable to read backup log during deduplication. The backup should be complete but not deduplicated.")?;
     let mut candidates = Vec::with_capacity(latest_stats.num_writes as usize);
 
-    // First we read this backup and the last backups files.
-    push_all_matching_files(
-        latest_backup,
-        &existence_filter,
-        &mut candidates,
-        &opts,
-        true,
-    );
-
+    // Initialize list of previous backups that we dedup against.
     let mut remaining_backups: Vec<&Backup> = prev_backups.iter().collect();
-    let mut remaining_backups: Vec<&Backup> =
-        reduce_set_of_backups(&remaining_backups, &latest_stats.mtimes_written());
+    if opts.preserve_mtime {
+        remaining_backups =
+            reduce_set_of_backups(&remaining_backups, &latest_stats.mtimes_written());
+    }
+
+    // First we read this backup and the backup before files.
+    push_all_matching_files(backup_0, &existence_filter, &mut candidates, &opts, true);
+
     while !candidates.is_empty() {
-        let split = remaining_backups.split_last();
-        if let Some((this_backup, _)) = split {
-            push_all_matching_files(
-                this_backup,
-                &existence_filter,
-                &mut candidates,
-                &opts,
-                false,
-            );
+        if let Some(backup_mi) = remaining_backups.pop() {
+            push_all_matching_files(backup_mi, &existence_filter, &mut candidates, &opts, false);
         }
 
         candidates.sort_unstable_by(|a, b| {
@@ -135,23 +133,25 @@ pub fn run_deduplication_flow(
         });
 
         // dedup and delete
-        candidates = dedup_and_delete(candidates, opts, runner);
+        let final_run = remaining_backups.is_empty();
+        candidates = dedup_and_delete(candidates, opts, final_run, runner);
 
         // compute mtimes interval
-        let mtimes = written_mtimes(&candidates);
-        match split {
-            Some((_, remainder)) => {
-                remaining_backups = reduce_set_of_backups(remainder, &latest_stats.mtimes_written())
-            }
-            None => break,
+        if final_run {
+            break;
+        } else {
+            let mtimes = written_mtimes(&candidates);
+            remaining_backups = reduce_set_of_backups(&remaining_backups, &mtimes);
         }
     }
+
     Ok(())
 }
 
 fn dedup_and_delete(
     sorted_candidates: Vec<DedupLogEntry>,
     opts: &DeduplicationOptions,
+    final_run: bool,
     runner: &Runner,
 ) -> Vec<DedupLogEntry> {
     let mut group: Vec<DedupLogEntry> = Vec::new();
@@ -162,13 +162,13 @@ fn dedup_and_delete(
             continue;
         }
 
-        match dedup_group(&mut group, false, opts, runner) {
+        match dedup_group(&mut group, final_run, opts, runner) {
             DeduplicationResult::NeedsDeduplication => remaining_candidates.append(&mut group),
             DeduplicationResult::Done => group.clear(),
         }
         group.push(log_entry);
     }
-    if dedup_group(&mut group, true, opts, runner) == DeduplicationResult::NeedsDeduplication {
+    if dedup_group(&mut group, final_run, opts, runner) == DeduplicationResult::NeedsDeduplication {
         remaining_candidates.append(&mut group);
     }
 
@@ -195,15 +195,15 @@ fn dedup_group(
     let first = group.first().unwrap();
     let last = group.last().unwrap();
     if !first.wants_dedup && !last.wants_dedup {
-        // We have a group of old files from previous backups. These are probably false positives from the existence filter. We can safely discard them.
+        // We have a group of old files from previous backups. These are probably final_run positives from the existence filter. We can safely discard them.
         return DeduplicationResult::Done;
-    } else if !final_run && !first.wants_dedup && last.wants_dedup {
+    } else if !final_run && first.wants_dedup && last.wants_dedup {
         // We have a group of new files but nothing to dedup against. So we keep it.
         return DeduplicationResult::NeedsDeduplication;
     }
     // Lets dedup
     assert!(
-        final_run || !first.wants_dedup,
+        final_run || !last.wants_dedup,
         "This is a bug and should never happen."
     );
     let absolute_paths: Vec<&Path> = group[1..]

@@ -99,19 +99,25 @@ pub fn find_all_hardlinks(path: &Path) -> Vec<Vec<PathBuf>> {
         inode_to_path.entry(metadata.st_ino()).or_default().push(f);
     }
 
-    inode_to_path
+    let mut groups: Vec<Vec<PathBuf>> = inode_to_path
         .values()
         .into_iter()
         .filter(|v| v.len() > 1)
         .cloned()
-        .collect()
+        .collect();
+    groups.sort();
+    groups
 }
 
-pub fn most_recent_backup(path: &Path) -> PathBuf {
+pub fn nth_last_backup(path: &Path, n: usize) -> PathBuf {
     let mut files = std::fs::read_dir(path)
         .unwrap()
         .map(|entry| entry.unwrap().path())
         .collect::<Vec<_>>();
     files.sort();
-    files.last().unwrap().to_path_buf()
+    files[files.len() - n - 1].to_path_buf()
+}
+
+pub fn most_recent_backup(path: &Path) -> PathBuf {
+    return nth_last_backup(path, 0);
 }

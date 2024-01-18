@@ -62,14 +62,14 @@ impl Repo {
         if !path.is_dir() {
             return Err("The provided backup {path} path does not exist. Please provide a valid path or use --initialize to create a new directory.".into());
         }
-        let backups = list_dirs(path)
+        let mut backups: Vec<Backup> = list_dirs(path)
             .map_err(|e| format!("Unable to list backups at {:?}. :{:?}", path, e))?
             .iter()
             .map(Backup::from_existing)
             .filter(Option::is_some)
             .flatten() // Option<Backup> -> Backup
             .collect();
-
+        backups.sort_by(|a, b| a.path().cmp(b.path()));
         Ok(Repo {
             path: PathBuf::from(path),
             backups,
