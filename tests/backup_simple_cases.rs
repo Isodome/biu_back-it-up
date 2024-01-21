@@ -1,5 +1,5 @@
 mod common;
-use biu::run_backup_flow;
+use libbiu::run_backup_flow;
 use common::*;
 use std::collections::HashMap;
 
@@ -10,7 +10,7 @@ fn backup_single_file() {
 
     write_files(f.source_path(), HashMap::from([("a.txt", "Hello World")]));
 
-    run_backup_flow(biu::BackupFlowOptions {
+    run_backup_flow(libbiu::BackupFlowOptions {
         initialize: true,
         ..f.backup_flow_options()
     })
@@ -33,7 +33,7 @@ fn repository_not_initialized() {
 
     write_files(f.source_path(), HashMap::from([("a.txt", "Hello World")]));
 
-    let status = run_backup_flow(biu::BackupFlowOptions {
+    let status = run_backup_flow(libbiu::BackupFlowOptions {
         initialize: false,
         ..f.backup_flow_options()
     });
@@ -51,7 +51,7 @@ fn initialize_fails_if_repository_exists() {
     write_files(f.source_path(), HashMap::from([("a.txt", "Hello World")]));
     std::fs::create_dir_all(&backup_dir).unwrap();
 
-    let status = run_backup_flow(biu::BackupFlowOptions {
+    let status = run_backup_flow(libbiu::BackupFlowOptions {
         initialize: true,
         ..f.backup_flow_options()
     });

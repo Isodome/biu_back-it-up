@@ -26,12 +26,12 @@ impl TestFixture {
         }
     }
 
-    pub fn backup_flow_options(&self) -> biu::BackupFlowOptions {
-        biu::BackupFlowOptions {
+    pub fn backup_flow_options(&self) -> libbiu::BackupFlowOptions {
+        libbiu::BackupFlowOptions {
             initialize: false,
             source_paths: self.source_dirs.clone(),
             backup_path: self.backup_dir.clone(),
-            archive_mode: false,
+            follow_symlinks: false,
             deep_compare: false,
             preserve_mtime: false,
             min_bytes_for_dedup: 0,

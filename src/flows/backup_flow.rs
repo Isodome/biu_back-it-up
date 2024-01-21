@@ -20,7 +20,8 @@ use std::path::PathBuf;
 pub struct BackupOptions<'a> {
     pub source_paths: &'a [PathBuf],
     pub backup_path: &'a Path,
-    pub archive_mode: bool,
+
+    pub follow_symlinks: bool,
 }
 
 struct BackupSource {
@@ -87,6 +88,7 @@ pub fn run_backup_flow_internal(repo: &Repo, opts: &BackupOptions) -> Result<(),
         new_backup: &target_backup,
         prev_backup: repo.latest_backup(),
         repo: &repo,
+        opts: &opts,
     };
 
     // Create dated top level backup directory.
@@ -139,6 +141,7 @@ pub struct BackupContext<'a> {
     pub repo: &'a Repo,
     pub prev_backup: Option<&'a Backup>,
     pub new_backup: &'a Backup,
+    pub opts: &'a BackupOptions<'a>,
 }
 
 fn copy_file(from: &Path, to: &Path) -> io::Result<u64> {
@@ -215,7 +218,10 @@ fn copy_directory_incremental_recursive(
 
     for file_name in dir_contents {
         let to_copy_abs_path = source_dir.join(&file_name);
-        let to_copy_meta = std::fs::symlink_metadata(&to_copy_abs_path)?;
+        let to_copy_meta = match context.opts.follow_symlinks {
+            true => std::fs::metadata(&to_copy_abs_path)?,
+            false => std::fs::symlink_metadata(&to_copy_abs_path)?,
+        };
 
         let dest_path = to_dir.join(&file_name);
         if to_copy_meta.file_type().is_dir() {

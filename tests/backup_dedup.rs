@@ -1,7 +1,7 @@
 mod common;
-use biu::run_backup_flow;
+use libbiu::run_backup_flow;
 use common::*;
-use std::{collections::HashMap, fs};
+use std::collections::HashMap;
 
 #[test]
 fn initial_backup_with_dups() {
@@ -11,7 +11,7 @@ fn initial_backup_with_dups() {
     write_files(f.source_path(), HashMap::from([("a.txt", "Hello World")]));
     write_files(f.source_path(), HashMap::from([("b/b.foo", "Hello World")]));
 
-    run_backup_flow(biu::BackupFlowOptions {
+    run_backup_flow(libbiu::BackupFlowOptions {
         initialize: true,
         preserve_mtime: false,
         ..f.backup_flow_options()
@@ -38,7 +38,7 @@ fn dedup_agaist_old_backup() {
 
     // Backup 1
     write_files(f.source_path(), HashMap::from([("a.txt", "Hello World")]));
-    run_backup_flow(biu::BackupFlowOptions {
+    run_backup_flow(libbiu::BackupFlowOptions {
         initialize: true,
         preserve_mtime: false,
         ..f.backup_flow_options()
@@ -55,7 +55,7 @@ fn dedup_agaist_old_backup() {
             ("b/c.foo", "I am file c"),
         ]),
     );
-    run_backup_flow(biu::BackupFlowOptions {
+    run_backup_flow(libbiu::BackupFlowOptions {
         preserve_mtime: false,
         ..f.backup_flow_options()
     })

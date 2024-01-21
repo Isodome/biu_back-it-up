@@ -2,7 +2,7 @@ mod flows;
 mod repo;
 mod utils;
 
-use biu::{
+use libbiu::{
     run_backup_flow, run_cleanup_flow, BackupFlowOptions, CleanupFlowOptions, RetentionPlan,
 };
 use clap::{Args, Parser, Subcommand};
@@ -86,7 +86,7 @@ fn run() -> Result<(), String> {
                 initialize: args.initialize,
                 source_paths: args.source_paths.clone(),
                 backup_path: args.backup_path.backup_path.clone(),
-                archive_mode: false,
+                follow_symlinks: false,
                 deep_compare: true,
                 preserve_mtime: false,
                 min_bytes_for_dedup: 0,

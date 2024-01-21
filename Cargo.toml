@@ -5,6 +5,14 @@ edition = "2021"
 license = "GPL-3.0"
 authors = ["Dominic"]
 
+[lib]
+name = "libbiu"
+path = "src/lib.rs"
+
+[[bin]]
+name = "biu"
+path = "src/main.rs"
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

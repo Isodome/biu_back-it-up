@@ -11,7 +11,8 @@ pub struct BackupFlowOptions {
     pub initialize: bool,
     pub source_paths: Vec<PathBuf>,
     pub backup_path: PathBuf,
-    pub archive_mode: bool,
+    
+    pub follow_symlinks: bool,
 
     pub deep_compare: bool,
     pub preserve_mtime: bool,
@@ -24,7 +25,7 @@ pub fn run_backup_flow(opts: BackupFlowOptions) -> Result<(), String> {
     let backup_opts = flows::BackupOptions {
         source_paths: &opts.source_paths,
         backup_path: &opts.backup_path,
-        archive_mode: false,
+        follow_symlinks: false,
     };
     let repo = Repo::from(&backup_opts.backup_path, opts.initialize)?;
 
