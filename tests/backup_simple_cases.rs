@@ -58,3 +58,26 @@ fn initialize_fails_if_repository_exists() {
 
     assert!(status.is_err());
 }
+
+#[test]
+fn backup_single_symlink() {
+    let f = TestFixture::with_single_source();
+    let backup_dir = &f.backup_dir;
+
+    write_symlinks(f.source_path(), HashMap::from[("/foo/bar/", "symlink.txt")]);
+
+    run_backup_flow(libbiu::BackupFlowOptions {
+        initialize: true,
+        ..f.backup_flow_options()
+    })
+    .unwrap();
+
+    // Check that the backup is correct.
+    file_trees_equal(
+        f.source_path(),
+        &most_recent_backup(&backup_dir).join(f.source_path().file_name().unwrap()),
+    );
+
+    // Check that we didnt'accidentially hardlink the backup to the original.
+    assert!(find_all_hardlinks(&backup_dir).is_empty());
+}

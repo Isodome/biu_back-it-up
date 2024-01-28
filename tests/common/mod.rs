@@ -64,12 +64,20 @@ pub fn write_files(path: &Path, files: HashMap<&str, &str>) {
     }
 }
 
+pub fn write_symlinks(path: &Path, files: HashMap<&str, &str>) {
+    for (target, link) in files {
+        std::os::unix::fs::symlink(target, &path.join(link)).unwrap();
+    }
+}
+
 pub fn read_dir_recursive(tree: &Path) -> Vec<PathBuf> {
     let mut result = Vec::new();
     for entry in std::fs::read_dir(tree).unwrap() {
         let entry = entry.unwrap();
         let path = entry.path();
-        if path.is_dir() {
+        if path.is_symlink() {
+            result.push(tree.join(path));
+        } else if path.is_dir() {
             result.extend(read_dir_recursive(&path));
         } else {
             result.push(tree.join(path));
@@ -78,6 +86,13 @@ pub fn read_dir_recursive(tree: &Path) -> Vec<PathBuf> {
     result.sort();
     result
 }
+
+pub fn read2(path: &Path) -> Vec<u8> {
+    if (path.is_symlink()) {
+        return std::fs::read_link(path).unwrap().as_bytes().iter().collect();
+    } else {
+        return std::fs::read(path).unwrap();
+    }
 
 pub fn file_trees_equal(lhs: &Path, rhs: &Path) {
     let lhs_files = read_dir_recursive(lhs);
@@ -88,7 +103,7 @@ pub fn file_trees_equal(lhs: &Path, rhs: &Path) {
         let lhs_file = &lhs_files[i];
         let rhs_file = &rhs_files[i];
         assert_eq!(lhs_file.strip_prefix(lhs), rhs_file.strip_prefix(rhs));
-        assert!(std::fs::read(lhs_file).unwrap() == std::fs::read(rhs_file).unwrap());
+        assert!(read2(lhs_file) == read2(rhs_file));
     }
 }
 
