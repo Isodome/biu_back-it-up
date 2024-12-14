@@ -64,9 +64,12 @@ fn backup_single_symlink() {
     let f = TestFixture::with_single_source();
     let backup_dir = &f.backup_dir;
 
-    write_symlinks(f.source_path(), HashMap::from[("/foo/bar/", "symlink.txt")]);
+    write_symlinks(
+        f.source_path(),
+        HashMap::from([("/foo/bar/", "symlink.txt")]),
+    );
 
-    run_backup_flow(libbiu::BackupFlowOptions {
+    run_backup_flow(biu::BackupFlowOptions {
         initialize: true,
         ..f.backup_flow_options()
     })

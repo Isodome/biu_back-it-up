@@ -88,12 +88,12 @@ pub fn read_dir_recursive(tree: &Path) -> Vec<PathBuf> {
 }
 
 pub fn read2(path: &Path) -> Vec<u8> {
-    if (path.is_symlink()) {
-        return std::fs::read_link(path).unwrap().as_bytes().iter().collect();
+    if path.is_symlink() {
+        return std::fs::read(std::fs::read_link(path).unwrap()).unwrap();
     } else {
         return std::fs::read(path).unwrap();
     }
-
+}
 
 pub fn file_trees_equal(lhs: impl AsRef<Path>, rhs: impl AsRef<Path>) {
     let lhs_files = read_dir_recursive(lhs.as_ref());
