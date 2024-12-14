@@ -107,7 +107,7 @@ pub fn run_backup_flow_internal(repo: &Repo, opts: &BackupOptions) -> Result<(),
         Some(backup) => backup
             .log()
             .iter()
-            .map_err(|e| "Unable to open previous backup log.")?,
+            .map_err(|_| "Unable to open previous backup log.")?,
         None => BackupLogIterator::empty(),
     })
     .peekable();

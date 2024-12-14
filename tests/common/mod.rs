@@ -8,7 +8,7 @@ use std::{
 use tempfile::tempdir;
 
 pub struct TestFixture {
-    pub test_root: tempfile::TempDir,
+    // test_root: tempfile::TempDir,
     pub source_dirs: Vec<PathBuf>,
     pub backup_dir: PathBuf,
 }
@@ -20,14 +20,14 @@ impl TestFixture {
         let backup_dir = test_root.path().join("backup");
 
         TestFixture {
-            test_root,
+            // test_root,
             source_dirs: vec![source_dir],
             backup_dir,
         }
     }
 
-    pub fn backup_flow_options(&self) -> libbiu::BackupFlowOptions {
-        libbiu::BackupFlowOptions {
+    pub fn backup_flow_options(&self) -> biu::BackupFlowOptions {
+        biu::BackupFlowOptions {
             initialize: false,
             source_paths: self.source_dirs.clone(),
             backup_path: self.backup_dir.clone(),
@@ -94,15 +94,19 @@ pub fn read2(path: &Path) -> Vec<u8> {
         return std::fs::read(path).unwrap();
     }
 
-pub fn file_trees_equal(lhs: &Path, rhs: &Path) {
-    let lhs_files = read_dir_recursive(lhs);
-    let rhs_files = read_dir_recursive(rhs);
+
+pub fn file_trees_equal(lhs: impl AsRef<Path>, rhs: impl AsRef<Path>) {
+    let lhs_files = read_dir_recursive(lhs.as_ref());
+    let rhs_files = read_dir_recursive(rhs.as_ref());
 
     assert_eq!(lhs_files.len(), rhs_files.len());
     for i in 0..lhs_files.len() {
         let lhs_file = &lhs_files[i];
         let rhs_file = &rhs_files[i];
-        assert_eq!(lhs_file.strip_prefix(lhs), rhs_file.strip_prefix(rhs));
+        assert_eq!(
+            lhs_file.strip_prefix(lhs.as_ref()),
+            rhs_file.strip_prefix(rhs.as_ref())
+        );
         assert!(read2(lhs_file) == read2(rhs_file));
     }
 }
@@ -135,4 +139,11 @@ pub fn nth_last_backup(path: &Path, n: usize) -> PathBuf {
 
 pub fn most_recent_backup(path: &Path) -> PathBuf {
     return nth_last_backup(path, 0);
+}
+
+pub fn back_dir_with_name(name: &str, f: &TestFixture) -> PathBuf {
+    return f
+        .backup_dir
+        .join(Path::new(name))
+        .join(f.source_path().file_name().unwrap());
 }

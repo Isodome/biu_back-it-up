@@ -2,7 +2,7 @@ extern crate cuckoofilter;
 
 use cuckoofilter::CuckooFilter;
 
-use crate::repo::{AllFilesLogIterator, Backup, NewFilesLogIterator, Repo};
+use crate::repo::{Backup, NewFilesLogIterator, Repo};
 use crate::utils::{Interval, Runner};
 
 use std::collections::hash_map::DefaultHasher;

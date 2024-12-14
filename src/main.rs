@@ -1,12 +1,8 @@
-mod flows;
-mod repo;
-mod utils;
-
-use libbiu::{
-    run_backup_flow, run_cleanup_flow, BackupFlowOptions, CleanupFlowOptions, RetentionPlan,
-};
+use biu::*;
 use clap::{Args, Parser, Subcommand};
 use std::{path::PathBuf, process};
+
+
 
 // ---------- Shared Arguments -----------
 #[derive(Args)]
@@ -78,6 +74,8 @@ struct ScrubArgs {
 }
 
 fn run() -> Result<(), String> {
+    env_logger::init();
+
     let cli = Cli::parse();
 
     match &cli.command {
@@ -101,6 +99,7 @@ fn run() -> Result<(), String> {
             };
             run_cleanup_flow(cleanup_opts)
         }
+
         _ => panic!("Unkown command"),
     }
 }

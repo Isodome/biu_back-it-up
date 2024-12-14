@@ -1,4 +1,5 @@
 use super::Backup;
+use log::info;
 use std::{
     fs, io,
     path::{Path, PathBuf},
@@ -59,6 +60,7 @@ impl Repo {
     }
 
     pub fn existing(path: &Path) -> Result<Repo, String> {
+        info!("Creating Repo from path {}", path.display());
         if !path.is_dir() {
             return Err("The provided backup {path} path does not exist. Please provide a valid path or use --initialize to create a new directory.".into());
         }

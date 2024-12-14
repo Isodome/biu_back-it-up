@@ -1,4 +1,5 @@
 use chrono::{DateTime, NaiveDateTime, TimeZone};
+use log::debug;
 use std::{
     io::Write,
     os::unix::ffi::OsStrExt,
@@ -61,11 +62,13 @@ impl Backup {
 
     pub fn from_existing<P: Into<PathBuf>>(path: P) -> Option<Self> {
         let pathbuf: PathBuf = path.into();
+        debug!("Found repo at {:?}", pathbuf.display());
         if !pathbuf.is_dir() {
             return None;
         }
         let dir_name = pathbuf.file_name()?.to_str()?;
-        let time_from_dir = NaiveDateTime::parse_from_str(&dir_name[..16], "%Y-%m-%d_%H-%M").ok()?;
+        let time_from_dir =
+            NaiveDateTime::parse_from_str(&dir_name[..16], "%Y-%m-%d_%H-%M").ok()?;
 
         return Some(Backup {
             path: pathbuf,
